@@ -32,14 +32,14 @@ The census never takes pixels. Running inside the page, it reads:
 
 - **Computed styles** of every visible element: colors, type, corners, shadows and heights.
 - **Boxes**, for place and size, text that is cut off, and what covers what.
-- **The page's CSS rules**, for hover, pressed and focus colors, ranked the way the cascade ranks them.
+- **Hover, pressed and focus colors**, as the control really wears them. The capture has Chrome force each state on each control in view, and on everything above it for hover and press, as a real pointer would. A hover a parent passes down through a variable or a group still shows. Without the capture, the census reads them from the page's CSS rules, ranked the way the cascade ranks them.
 - **The component tree**: which part drew a place, and with which variant props (`variant`, `size`, `tone` and the like). This works in the dev builds of React, Vue 3, Vue 2, Svelte and Angular. On any other page, mark a part with `data-part="Button"` and `data-variant`.
 - **Where each part was used**, with `--sources`: the file and line of the JSX or template that placed it. This comes from React's dev build, mapped through the page's source maps, and from Vue and Svelte's dev builds.
 - **ARIA roles and states** (selected, disabled, open) and the words on the app's own controls.
 
 ## Capture
 
-Census needs Node 18+ and Playwright (`npm i -D playwright`, then `npx playwright install chromium`).
+Census needs Node 22+ and Chrome, Chromium or Edge. Nothing else: the capture drives the browser itself through the DevTools Protocol.
 
 ```bash
 npm install && npm run build
@@ -53,7 +53,10 @@ Options:
 - `--size 1440x900`: the window size.
 - `--wait 3000`: how long to wait after load, in ms.
 - `--wait-for <css>`: an element to wait for first.
-- `--storage state.json`: a Playwright storage state, for pages behind a sign-in.
+- `--connect 9222`: use a Chrome that already runs with `--remote-debugging-port=9222`, such as your own signed-in one. The capture opens a tab of its own and closes it when done. Pages behind a sign-in then need nothing else.
+- `--chrome <path>`: which browser to start (default: the installed Chrome, Chromium or Edge, or `CENSUS_CHROME`).
+- `--storage state.json`: cookies and localStorage, in Playwright's storage-state format, for pages behind a sign-in.
+- `--states rules`: read hover, pressed and focus colors from the CSS rules only, without forcing them (faster on pages with hundreds of controls).
 - `--hide <css>`: elements to hide first, such as a dev overlay or a cookie banner.
 - `--tour`: also opens each pop-up once and adds its look. It clicks what has `aria-haspopup` or `aria-expanded=false`, hovers a few labeled buttons, and never submits a form.
 - `--closed`: also says how pop-ups that aren't open yet will look (React pages).
@@ -126,7 +129,7 @@ An agent that already drives a browser, through Playwright MCP, Chrome DevTools 
 1. Run the contents of `dist/census.js` in the page (an evaluate call). It sets `window.census`.
 2. Run `census.lines(census.data(rules)).join("\n")` and read the text.
 
-This route maps no source maps, so React 19's places stay bundled-code frames (`@ {url:line:col …}`).
+This route maps no source maps, so React 19's places stay bundled-code frames (`@ {url:line:col …}`), and it reads hover, pressed and focus colors from the CSS rules instead of forcing them.
 
 ## In your own page
 
@@ -144,6 +147,7 @@ Words come only from the app's own controls: buttons, menu items, tabs and headi
 ## Safety
 
 - **The census only reads.** For one synchronous moment it lifts `inert` and pointer-events so it can hit-test what covers what, then puts them back. It sends nothing anywhere: the page's own script gets the text.
+- **`--connect` gives the capture your browser.** It only opens, drives and closes its own tab, but that tab has your cookies: capture only pages you trust, and close the debugging port when done.
 - **`--tour` clicks.** It presses only controls that open something (`aria-haspopup`, `aria-expanded=false`), never a submit, and hovers a few labeled buttons. Still, don't tour a signed-in production account where a menu item could do something on its own.
 - **`--sources` fetches source maps only from the captured pages' own origins**, with no redirects and at most 64 MB a file. A page's stack frames can name any address, so nothing else is fetched.
 - **Page words are data.** The census quotes the app's own button and heading words, and a hostile page could write instructions there. The reader prompt says to treat them as data. Run the reader with no tools, as `census prompt` assumes.
@@ -154,7 +158,7 @@ Words come only from the app's own controls: buttons, menu items, tabs and headi
 npm test
 ```
 
-This runs the pure parts in Node, then a sample page (`test/fixture.html`) in Chromium.
+This runs the pure parts in Node, then the capture command on sample pages (`test/fixture.html`, `test/states.html`) in your Chrome. The in-page tests (Vue, Svelte, Angular) also run when Playwright is installed (`npm i -D playwright`).
 
 ## Licence
 

@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>States the rules can't tell</title>
+<style>
+  body { background: #131313; color: #fff; font: 14px/20px sans-serif; margin: 20px; }
+  button { font: inherit; border: 0; height: 32px; padding: 0 12px; border-radius: 8px; color: #fff; }
+  /* a hover set on the row, passed down through a variable */
+  .row { padding: 8px; }
+  .row:hover { --act: #333333; }
+  .act { background: var(--act, #1d1d1d); }
+  /* a hover the card gives its button (a group hover) */
+  .card:hover .more { background: #282828; }
+  .more { background: #1d1d1d; }
+  /* a plain hover, which the rules see too */
+  .save { background: #1d1d1d; }
+  .save:hover { background: #282828; }
+</style>
+<div class="row"><button class="act">Edit</button></div>
+<div class="card"><button class="more">More</button></div>
+<button class="save">Save</button>

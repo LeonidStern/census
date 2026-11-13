@@ -775,6 +775,46 @@ const textLines = (el: Element): number => {
 };
 const CONTROL = "button,[role=button],[role=tab],[role=radio],[role=checkbox],[role=switch],[role=option],[role=menuitem],input,select,textarea,a[href]";
 const NATIVE = "a[href],button,input,select,textarea";
+
+// Looks read with a state forced on by the capture (Chrome's DevTools Protocol forces :hover, :active and :focus-visible
+// on the control and, for hover and press, on everything above it): what the control really wears hovered, pressed or
+// focused, where the page's rules would only be a guess (a hover set on a parent, a variable, a JS-free group hover).
+const forced = new WeakMap<Element, Map<string, Record<string, string>>>();
+// what a kit sets from its own handlers; [data-pressed] is a press in some kits and a toggle's "on" in others, so a press
+// is read both ways ("pressed" with :active alone, "pressed-attr" with [data-pressed] too) and the page's rules choose
+const FORCE_ATTR: Record<string, string> = { hover: "data-hovered", "pressed-attr": "data-pressed", focus: "data-focus-visible" };
+const lookNow = (el: Element) => {
+  const cs = getComputedStyle(el), o: Record<string, string> = { fill: cs.backgroundColor, text: cs.color, line: parseFloat(cs.borderTopWidth) > 0 ? cs.borderTopColor : "" };
+  for (const p of ["before", "after"]) { const ps = getComputedStyle(el, `::${p}`); if (!/^(none|normal)$/.test(ps.content)) o[`overlay ${p}`] = ps.backgroundColor; }
+  return o;
+};
+/** Marks the controls in view (data-census-f="i", the ones above them data-census-up="i") and reads their resting look; returns how many. */
+export function forceMark(): number {
+  let i = 0;
+  for (const el of document.querySelectorAll(CONTROL)) {
+    const r = el.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth || !el.checkVisibility()) continue;
+    el.setAttribute("data-census-f", String(i));
+    for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) a.setAttribute("data-census-up", `${a.getAttribute("data-census-up") ?? ""} ${i}`.trim());
+    forced.set(el, new Map([["rest", lookNow(el)]]));
+    if (++i >= 400) break;
+  }
+  return i;
+}
+/** Before Chrome forces `state` on control i: the attributes a kit sets from its own pointer handlers (data-hovered…). After: its look in that state, then the attributes go. */
+export function forceStep(i: number, state: string, on: boolean): void {
+  const el = document.querySelector(`[data-census-f="${i}"]`);
+  if (!el) return;
+  const own = FORCE_ATTR[state] ?? "";
+  if (on) { if (own && !el.hasAttribute(own)) { el.setAttribute(own, "true"); el.setAttribute("data-census-set", own); } return; }
+  forced.get(el)?.set(state, lookNow(el));
+  const set = el.getAttribute("data-census-set");
+  if (set) { el.removeAttribute(set); el.removeAttribute("data-census-set"); }
+}
+/** Takes the marks off. */
+export function forceDone(): void {
+  for (const el of document.querySelectorAll("[data-census-f],[data-census-up]")) { el.removeAttribute("data-census-f"); el.removeAttribute("data-census-up"); }
+}
 const LAYER = /^(dialog|alertdialog|menu|listbox|tooltip)$/;
 // what a class or style given at a part's use site may change about its look (not where it sits: width, margin, flex)
 const LOOK = ["height", "min-height", "border-top-left-radius", "background-color", "color", "font-size", "font-weight", "line-height", "letter-spacing", "font-family", "box-shadow", "border-top-color"];
@@ -1162,9 +1202,29 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     let said = stateSaid.get(el);
     if (said) return said;
     said = [];
+    const real = forced.get(el), toggles = saysOn(el);
+    if (real && real.size > 1) {
+      // read with the state forced on: what differs from rest is the state's look
+      const rest = real.get("rest")!, cs = getComputedStyle(el), off = el.matches(":disabled");
+      // [data-pressed] is this control's press when a rule the census counts as a press (not a toggle's on) gives it a look
+      const attrPress = (matched.get(el) ?? []).some((st) => st.state === "pressed" && st.on) && !toggles;
+      for (const [name, look] of real) {
+        if (name === (attrPress ? "pressed" : "pressed-attr")) continue;
+        const state = name === "pressed-attr" ? "pressed" : name;
+        if (state === "rest" || (state !== "focus" && cs.pointerEvents === "none") || (state !== "hover" && off)) continue;
+        for (const [k, v] of Object.entries(look)) {
+          const c = v ? colorOf(v) : null;
+          const was = (x?: string) => (x ? colorOf(x) : null);
+          // a press is under a hovering pointer: what it shares with the hover look is the hover's
+          if (c && c !== was(rest[k]) && !(state === "pressed" && c === was(real.get("hover")?.[k]))) said.push(`${state} ${k.startsWith("overlay") ? "overlay fill" : k} ${c}`);
+        }
+      }
+      stateSaid.set(el, said);
+      return said;
+    }
     const win = new Map<string, { raw: string; imp: boolean; st: StateRule; prop: string }>();
     // a control that says whether it is on (aria-pressed, -checked, -selected) wears data-pressed as that state, not under a pointer
-    const toggles = saysOn(el), mine = matched.get(el) ?? [];
+    const mine = matched.get(el) ?? [];
     for (const st of mine) for (const [prop, word] of [["background-color", "fill"], ["color", "text"], ["border-color", "line"]] as const) {
       const raw = st.on && toggles ? "" : st.style.getPropertyValue(prop);
       if (!raw) continue;

@@ -136,5 +136,25 @@ if (chromium) {
   await b.close();
 }
 
+// ---------- The capture command, through Chrome's DevTools Protocol ----------
+{
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { findChrome } = await import("../cli/cdp.mjs");
+  const chrome = await findChrome().catch(() => null);
+  if (!chrome) console.log("skip the capture test: no Chrome found");
+  else {
+    const dir = mkdtempSync(`${tmpdir()}/census-test-`), cli = fileURLToPath(new URL("../cli/census.mjs", import.meta.url));
+    const run = (out, page, ...more) => { execFileSync("node", [cli, "capture", "--rules", fileURLToPath(new URL("rules.json", import.meta.url)), "--out", `${dir}/${out}`, "--wait", "200", ...more, `p=${new URL(page, import.meta.url).href}`], { stdio: "pipe", timeout: 60000 }); return readFileSync(`${dir}/${out}/p.txt`, "utf8"); };
+    const group = (t, g) => t.split(/\n(?=\S)/).find((x) => x.startsWith(`${g} (`)) ?? "";
+    const forced = run("f", "fixture.html"), rules = run("r", "fixture.html", "--states", "rules");
+    check(forced.length > 500 && group(forced, "states") === group(rules, "states"), `capture: forced hover, press and focus give the fixture's states as its rules do${group(forced, "states") === group(rules, "states") ? "" : `\n${group(forced, "states")}\n---\n${group(rules, "states")}`}`);
+    const sf = group(run("sf", "states.html"), "states"), sr = group(run("sr", "states.html", "--states", "rules"), "states");
+    const ok = /hover fill #333333[^\n]*button "Edit"/.test(sf) && !/#333333/.test(sr) && /hover fill surface-3[^\n]*"More"/.test(sf);
+    check(ok, `capture: a hover a row passes down through a variable shows only when forced${ok ? "" : `\n${sf}`}`);
+  }
+}
+
 console.log(fails ? `${fails} failed` : "all passed");
 process.exit(fails ? 1 : 0);
