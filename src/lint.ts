@@ -59,8 +59,8 @@ export function lintFindings(pages: Record<string, Census>): LintFinding[] {
       const m = f.at.match(AT);
       const file = m?.[1], line = m ? Number(m[2]) : undefined;
       const message = file || !f.at ? f.message : `${f.message} (at ${f.at.replace(/ @ .*$/, "")})`;
-      // one finding a line and rule: the same place on another page may say its other look differently
-      const key = file ? `${file}:${line}:${f.rule}` : `${f.rule}:${message}`;
+      // a place on another page may name its other look differently: "elsewhere" doesn't make it another finding
+      const key = `${file}:${line}:${f.rule}:${message.replace(/; elsewhere .*$/, "")}`;
       const had = out.get(key);
       if (had) { if (!had.pages.includes(page)) had.pages.push(page); }
       else out.set(key, { file, line, rule: f.rule, message, pages: [page] });
