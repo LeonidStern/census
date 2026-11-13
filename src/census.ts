@@ -284,14 +284,17 @@ function cross(a: DOMRect, b: DOMRect): DOMRect | null {
  * `closed`: also what pop-ups not opened yet would look like (React only).
  * `sources`: " @ file:line" where a place's part was used, on the places that
  * need a fix (set where used, off the system, a part in two looks).
+ * `items`: also each element's own look (Census.items), for diffCensus.
  */
-export type StyleRules = { colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean };
+export type StyleRules = { colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean; items?: boolean };
 
 /** The census as data: groups of counted values with a few places each. censusLines writes it out; mergeCensus joins pages. */
 export type CensusLook = { state: string; shape: string; skin: string; say: string; n: number; at: string[]; lo?: number; hi?: number };
 export type CensusRow = { key: string; n: number; note?: string; at: string[]; looks?: CensusLook[]; flag?: boolean };
 export type CensusGroup = { name: string; what?: string; rows: CensusRow[]; more?: number };
-export type Census = { head: string; groups: CensusGroup[] };
+/** One element's look, for a diff between two captures (rules.items): `id` names it with its words, `loose` without them. */
+export type CensusItem = { id: string; loose: string; at: string; box: [number, number, number, number]; look: Record<string, string> };
+export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[] };
 
 type RGBA = [number, number, number, number];
 const hex = (c: RGBA) => `#${c.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}${c[3] < 0.995 ? Math.round(c[3] * 255).toString(16).padStart(2, "0") : ""}`;
@@ -832,7 +835,16 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     const p = part(name), st = stateOf(name), no = stray(name, p), own = no ? null : inPart(name, p), tail = no ? "no DS part" : own ? `inside ${own.say}` : "";
     return `${nameOf(name)}${st ? ` (${st})` : ""}${p ? ` [${p.say}${tail ? `, ${tail}` : ""}]` : tail ? ` [${tail}]` : ""}${where(el)} ${box(r)}`;
   };
+  // with rules.items: every value each element was counted under, by group
+  const snap = rules.items ? new Map<Element, { el: Element; r: DOMRect; look: Map<string, string[]> }>() : null;
+  const groupName = new Map<Map<string, Seen>, string>(Object.entries(groups).map(([k, v]) => [v, k]));
   const add = (g: Map<string, Seen>, k: string, el: Element, r: DOMRect, name: Element = el) => {
+    if (snap && snap.size < 4000) {
+      let it = snap.get(name);
+      if (!it) snap.set(name, (it = { el, r, look: new Map() }));
+      const gn = groupName.get(g)!, had = it.look.get(gn) ?? [];
+      if (!had.includes(k)) it.look.set(gn, [...had, k]);
+    }
     let s = g.get(k);
     if (!s) g.set(k, (s = { n: 0, at: [], el: name, els: [] }));
     s.n++;
@@ -1350,5 +1362,16 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   const gone = [...embedded.keys(), ...out];
   const problems = layoutLines(root, 160, gone.length ? (el) => gone.some((x) => x.contains(el)) : undefined).filter((l) => PROBLEM.test(l));
   if (problems.length) made.push({ name: "layout problems", what: "", rows: problems.slice(0, 30).map((l) => ({ key: l, n: 0, at: [] })), more: Math.max(0, problems.length - 30) || undefined });
-  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made };
+  let items: CensusItem[] | undefined;
+  if (snap) {
+    items = [];
+    for (const [name, it] of snap) {
+      const p = part(name), st = stateOf(name), look: Record<string, string> = {};
+      for (const [g, ks] of it.look) look[g === "used" ? "set where used" : g] = ks.map((k) => (g === "shadow" ? sayShadow(k) : sayColors(k))).join("; ");
+      if (st) look.state = st;
+      const tag = name.getAttribute("role") ?? name.tagName.toLowerCase();
+      items.push({ id: `${nameOf(name)}${p ? ` [${p.say}]` : ""}${where(it.el)}`, loose: `${tag}${p ? ` [${p.key}]` : ""}${where(it.el)}`, at: place(it.el, it.r, name), box: [it.r.left, it.r.top, it.r.width, it.r.height].map(Math.round) as CensusItem["box"], look });
+    }
+  }
+  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items };
 }

@@ -25,6 +25,11 @@ const USAGE = `census capture [options] <url | name=url>...
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
 
+census diff <before/census.json> <after/census.json>
+  What changed between two captures of the same pages, page by page: elements whose look changed (before→after),
+  elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
+  Places that only moved are counted, not listed.
+
 census prompt [options] <census.txt>...
   --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
   --app <words>       what the app is ("a recipe site", "the checkout of a shop")
@@ -41,6 +46,7 @@ for (let i = 0; i < args.length; i++) {
 }
 if (cmd === "capture" && rest.length) await capture();
 else if (cmd === "prompt" && rest.length) console.log(prompt());
+else if (cmd === "diff" && rest.length === 2) await diff();
 else { console.log(USAGE); process.exit(cmd ? 1 : 0); }
 
 async function capture() {
@@ -50,6 +56,7 @@ async function capture() {
   const rules = opt.rules ? JSON.parse(readFileSync(opt.rules, "utf8")) : {};
   if (opt.closed) rules.closed = true;
   if (opt.sources) rules.sources = true;
+  rules.items = true; // census.json keeps each element's look, for census diff
   const [width, height] = (opt.size ?? "1440x900").split("x").map(Number);
   const out = opt.out ?? "out";
   mkdirSync(out, { recursive: true });
@@ -153,6 +160,18 @@ async function tour(page, rules, data, width, height, url) {
     if (!to) data.groups.push((to = { name: g, what: g === "layers opened" ? "by the capture, one at a time: a click on each control that opens something, a hover on a few labeled buttons" : "", rows: [] }));
     to.rows.push(row);
   }
+}
+
+async function diff() {
+  const { diffCensus } = await import(join(here, "../dist/census.mjs"));
+  const [a, b] = rest.map((f) => JSON.parse(readFileSync(f, "utf8")));
+  const names = [...new Set([...Object.keys(a), ...Object.keys(b)])];
+  const out = [];
+  for (const n of names) {
+    if (!a[n] || !b[n]) { out.push(`${n}: only in the ${a[n] ? "before" : "after"} capture`, ""); continue; }
+    out.push(`<${n}>`, ...diffCensus(a[n], b[n]), `</${n}>`, "");
+  }
+  console.log(out.join("\n").trim());
 }
 
 function prompt() {

@@ -1,6 +1,12 @@
 # Census
 
-**Your design system, checked from text.** Census reads a live web page from the inside. It counts every style value on screen and names each one by your design system's own words: tokens, text styles, corners, shadows and parts. You get a few hundred lines of plain text that an AI can check against your rules, with no screenshots.
+**Eyes for a blind agent.** Census reads a live web page from the inside and writes what's on screen as text an AI can check. It counts every style value and names each one by your own words: tokens, text styles, corners, shadows and the components that drew it. It says what looks wrong, and where each part sits in the code. There are no screenshots and no pixels.
+
+What an agent does with it:
+
+- **Check a design system**: values off the tokens, a part that looks two ways, hover colors that differ.
+- **Catch visual regressions**: `census diff` compares two captures and lists what changed, element by element, with no pixel noise.
+- **Review a page** for layout problems: cut text, overlaps, faint words, covered controls.
 
 ```
 fill (4 values)
@@ -16,7 +22,7 @@ layout problems (2)
   faint p 20,144 760x18: contrast 1.2:1 (rgb(34,34,34) on rgb(19,19,19))
 ```
 
-That is part of the census of `test/fixture.html`. On a React page, each place also names the part that drew it, such as `[Button variant=secondary]`, and a `parts` group lists every part and variant with its looks.
+That is part of the census of `test/fixture.html`; the token names come from the rules you give it. On a React page, each place also names the part that drew it, such as `[Button variant=secondary]`, and a `parts` group lists every part and variant with its looks.
 
 **Why text and not screenshots.** A screenshot shows that two buttons look a little different. The census says which part drew each one, with which variant, what the place that uses it changed, and the CSS rule each value comes from. It also gives the hover and pressed colors without moving the mouse. In blind tests on a production web app, Opus reading the census alone found 6 of 9 known design-system problems, in about 35 s for about $0.21 a read. Given screenshots of the same pages instead, it found 1 of 8 in an earlier round.
 
@@ -75,6 +81,31 @@ Every field is optional. Without rules, the census still counts and compares val
 - `parts`: your design system's part names. A native button or link that none of them drew is marked `no DS part`.
 - `ignore`: a selector for subtrees to leave out.
 - `foreign: false`: keeps what no component drew. By default, on a React page, such a subtree is named once under "left out".
+
+## Visual regression
+
+Capture before and after a change, then diff:
+
+```bash
+node cli/census.mjs capture --rules rules.json --out before home=http://localhost:3000/
+# ...switch branch or deploy the change...
+node cli/census.mjs capture --rules rules.json --out after home=http://localhost:3000/
+node cli/census.mjs diff before/census.json after/census.json
+```
+
+```
+census diff: 1 changed, 1 new, 1 gone; 6 only moved (not listed)
+changed (1)
+  button "Share" in header 84,8 62x40: height button 36px→40px
+new (1)
+  button "Delete" 20,180 66x32: height button 32px; radius 8px; fill #ff0000 OFF (nearest surface-3, 222 away); ...
+gone (1)
+  button "Bold" (selected) in header 218,8 54x32: state selected; height button 32px; ...
+values new on the page (2)
+  fill #ff0000 OFF (nearest surface-3, 222 away) ×1: button "Delete" 20,180 66x32
+```
+
+Elements are matched by name, part and region. When their words change, such as a live price, they are matched without them. Elements that only moved are counted, not listed. A box that grows because of what's in it isn't listed either. The diff also gives values new on the page or gone from it, parts that gained or lost a look, and layout problems that appeared or were fixed. Give the diff and the change's description to an AI and ask which changes weren't meant.
 
 ## Ask an AI
 

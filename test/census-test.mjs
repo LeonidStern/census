@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const C = await import("../dist/census.mjs");
 let fails = 0;
-const check = (ok, what) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) fails++; };
+const check = (ok, what) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) fails++; return ok; };
 
 // ---------- Pure parts ----------
 check(C.specificity("#nav a:hover") === 1001001 && C.specificity(".btn.primary:hover") === 3000 && C.specificity(":where(.a, #b) .c") === 1000 && C.specificity(":is(.a, #b) > li::before") === 1000002
@@ -58,6 +58,21 @@ if (chromium) {
   await page.goto(`file://${fileURLToPath(new URL("fixture.html", import.meta.url))}`);
   const rules = { colors: { "surface-0": "#000", "surface-1": "#131313", "surface-2": "#1d1d1d", "surface-3": "#282828", "white-100": "#fff" }, type: ["14/400/18", "20/600/26"], radii: [4, 8, 12] };
   const text = (await page.evaluate((r) => window.census.lines(window.census.data(r)), rules)).join("\n");
+  // a diff of two captures: the page before and after a change
+  const p2 = await b.newPage({ viewport: { width: 800, height: 400 } });
+  await p2.addInitScript({ content: readFileSync(new URL("../dist/census.js", import.meta.url), "utf8") });
+  await p2.goto(`file://${fileURLToPath(new URL("fixture.html", import.meta.url))}`);
+  const before = await p2.evaluate((r) => window.census.data({ ...r, items: true }), rules);
+  await p2.evaluate(() => {
+    document.querySelector(".tall").style.height = "40px";
+    document.querySelector("[aria-pressed]").remove();
+    const x = document.createElement("button"); x.className = "btn"; x.style.background = "#ff0000"; x.textContent = "Delete"; document.querySelector(".card").append(x);
+    document.querySelector("header").style.paddingLeft = "20px";
+  });
+  const after = await p2.evaluate((r) => window.census.data({ ...r, items: true }), rules);
+  const d = C.diffCensus(before, after).join("\n");
+  check(/^census diff: 1 changed, 1 new, 1 gone; [1-9]\d* only moved/.test(d) && /button "Share" in header .*: height button 36px→40px/.test(d) && /new \(1\)\n  button "Delete".*fill #ff0000 OFF/.test(d)
+    && /gone \(1\)\n  button "Bold" \(selected\)/.test(d) && /values new on the page \(\d+\)\n  fill #ff0000 OFF/.test(d), "a diff: what changed, came and went; what only moved is counted") || console.log(d);
   await b.close();
   const has = (re, what) => check(re.test(text), `${what}${re.test(text) ? "" : `\n${text}`}`);
   has(/^fill .*\n(.*\n)*\s+surface-2 ×\d/m, "fills by token name");
