@@ -789,28 +789,53 @@ const lookNow = (el: Element) => {
   for (const p of ["before", "after"]) { const ps = getComputedStyle(el, `::${p}`); if (!/^(none|normal)$/.test(ps.content)) o[`overlay ${p}`] = ps.backgroundColor; }
   return o;
 };
-/** Marks the controls in view (data-census-f="i", the ones above them data-census-up="i") and reads their resting look; returns how many. */
+// what a control's hover, press and focus colors can depend on: its tag, attributes, place among its siblings, resting
+// look and the classes above it. Controls that share all of it wear the same states, so one of them is forced for all.
+const SKIP_ATTR = /^(id|href|src|alt|title|value|name|placeholder|for|tabindex|aria-(label|labelledby|describedby|controls|owns|activedescendant|posinset|setsize|valuenow|valuetext)|data-census-.*|data-(key|id|index|testid|test-id|value|row-index|item-index))$/;
+function stateKey(el: Element, rest: Record<string, string>): string {
+  const own = [...el.attributes].filter((a) => !SKIP_ATTR.test(a.name)).map((a) => `${a.name}=${a.value}`).sort().join(" ");
+  const up: string[] = [];
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) up.push(`${a.tagName} ${a.getAttribute("class") ?? ""} ${a.getAttribute("style") ?? ""}`);
+  const at = `${el.previousElementSibling ? "" : "first"} ${el.nextElementSibling ? "" : "last"}`;
+  return [el.tagName, own, at, JSON.stringify(rest), up.join(" < ")].join("|");
+}
+/**
+ * Marks the controls in view (data-census-f="i", the ones above them data-census-up="i") and reads their resting look;
+ * returns how many to force. A control like one already marked shares its readings and isn't marked.
+ */
 export function forceMark(): number {
   let i = 0;
+  const seen = new Map<string, Map<string, Record<string, string>>>();
   for (const el of document.querySelectorAll(CONTROL)) {
     const r = el.getBoundingClientRect();
     if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth || !el.checkVisibility()) continue;
+    const rest = lookNow(el), key = stateKey(el, rest), like = seen.get(key);
+    if (like) { forced.set(el, like); continue; }
+    const readings = new Map([["rest", rest]]);
+    seen.set(key, readings);
+    forced.set(el, readings);
     el.setAttribute("data-census-f", String(i));
     for (let a = el.parentElement; a && a !== document.documentElement; a = a.parentElement) a.setAttribute("data-census-up", `${a.getAttribute("data-census-up") ?? ""} ${i}`.trim());
-    forced.set(el, new Map([["rest", lookNow(el)]]));
     if (++i >= 400) break;
   }
   return i;
 }
-/** Before Chrome forces `state` on control i: the attributes a kit sets from its own pointer handlers (data-hovered…). After: its look in that state, then the attributes go. */
-export function forceStep(i: number, state: string, on: boolean): void {
+/**
+ * Control i, between two of Chrome's forcings: reads its look in the state just forced (`read`), takes off the
+ * attributes a kit sets from its own pointer handlers, then sets the ones of the state forced next (`next`). A press
+ * is read twice: as Chrome forces it, then with data-pressed too ("pressed-attr"), and the page's rules choose.
+ */
+export function forceRead(i: number, read: string | null, next: string | null): void {
   const el = document.querySelector(`[data-census-f="${i}"]`);
   if (!el) return;
-  const own = FORCE_ATTR[state] ?? "";
-  if (on) { if (own && !el.hasAttribute(own)) { el.setAttribute(own, "true"); el.setAttribute("data-census-set", own); } return; }
-  forced.get(el)?.set(state, lookNow(el));
-  const set = el.getAttribute("data-census-set");
-  if (set) { el.removeAttribute(set); el.removeAttribute("data-census-set"); }
+  const map = forced.get(el), set = (state: string) => { const a = FORCE_ATTR[state]; if (a && !el.hasAttribute(a)) { el.setAttribute(a, "true"); el.setAttribute("data-census-set", a); } };
+  const clear = () => { const a = el.getAttribute("data-census-set"); if (a) { el.removeAttribute(a); el.removeAttribute("data-census-set"); } };
+  if (read) {
+    map?.set(read, lookNow(el));
+    clear();
+    if (read === "pressed") { set("pressed-attr"); map?.set("pressed-attr", lookNow(el)); clear(); }
+  }
+  if (next) set(next);
 }
 /** Takes the marks off. */
 export function forceDone(): void {

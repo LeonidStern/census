@@ -12,7 +12,7 @@ Opus 5.5 read the output with no tools. The test app was a production React app 
 | False claims per read | 0 | 1 |
 | AI read time | **16 s (54% less)** | 35 s |
 | AI cost per read | **~$0.03 (57% less)** | ~$0.07 |
-| Capture per page, before and after | 60 s, 75 s CPU (20% and 150% more) | 50 s, 30 s CPU |
+| Capture per page, before and after | **34 s (29% less)**, 40 s CPU (14% more) | 48 s, 35 s CPU |
 
 On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 

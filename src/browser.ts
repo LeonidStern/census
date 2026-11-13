@@ -1,5 +1,5 @@
 // The script a capture puts in the page: window.census, with no other effect on the page.
-import { censusLines, forceDone, forceMark, forceStep, layoutLines, mergeCensus, styleData, type Census, type StyleRules } from "./census";
+import { censusLines, forceDone, forceMark, forceRead, layoutLines, mergeCensus, styleData, type Census, type StyleRules } from "./census";
 
 const at = (sel?: string) => (sel ? document.querySelector(sel) ?? document.body : document.body);
 (window as unknown as { census: unknown }).census = {
@@ -8,5 +8,5 @@ const at = (sel?: string) => (sel ? document.querySelector(sel) ?? document.body
   merge: (pages: Record<string, Census>) => mergeCensus(pages),
   layout: () => layoutLines(),
   // for a capture that forces states through the DevTools Protocol
-  forceMark, forceStep, forceDone,
+  forceMark, forceRead, forceDone,
 };

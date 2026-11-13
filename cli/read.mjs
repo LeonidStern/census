@@ -3,23 +3,27 @@
 import { mapSources, sourceMapper } from "./sourcemap.mjs";
 
 // Chrome forces each state on each control in view (hover and press on everything above it too, as a real pointer
-// would), with transitions off, and the census reads the control's colors in that state. Returns how many controls.
-export const FORCE = { hover: ["hover"], pressed: ["hover", "active"], "pressed-attr": ["hover", "active"], focus: ["focus", "focus-visible"] };
+// would), with transitions off, and the census reads the control's colors in that state. Controls alike are forced
+// once (census.forceMark). Each step replaces the last forcing, so a control takes 4 reads and 3 forcings. Returns how
+// many controls were forced.
 export async function forceStates(page) {
   await page.evaluate(() => { const s = document.createElement("style"); s.id = "census-still"; s.textContent = "*,*::before,*::after{transition:none!important;animation-play-state:paused!important}"; document.head.append(s); });
+  const step = (i, read, next) => page.evaluate(([j, r, n]) => window.census.forceRead(j, r, n), [i, read, next]);
   try {
     const n = await page.evaluate(() => window.census.forceMark());
     for (let i = 0; i < n; i++) {
       const [el] = await page.nodes(`[data-census-f="${i}"]`);
       if (!el) continue;
       const up = await page.nodes(`[data-census-up~="${i}"]`);
-      for (const [state, classes] of Object.entries(FORCE)) {
-        await page.evaluate(([j, s]) => window.census.forceStep(j, s, true), [i, state]);
-        await page.force([el], classes);
-        if (state !== "focus") await page.force(up, classes.filter((c) => c !== "focus-visible"));
-        await page.evaluate(([j, s]) => window.census.forceStep(j, s, false), [i, state]);
-        await page.force(state === "focus" ? [el] : [el, ...up], []);
-      }
+      await step(i, null, "hover");
+      await page.force([el, ...up], ["hover"]);
+      await step(i, "hover", "pressed");
+      await page.force([el, ...up], ["hover", "active"]);
+      await step(i, "pressed", "focus");
+      await page.force(up, []);
+      await page.force([el], ["focus", "focus-visible"]);
+      await step(i, "focus", null);
+      await page.force([el], []);
     }
     return n;
   } finally {

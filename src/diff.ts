@@ -55,12 +55,15 @@ function pairUp(a: CensusItem[], b: CensusItem[]) {
   return { pairs, gone: left, added: right };
 }
 
-const differs = ([x, y]: [CensusItem, CensusItem]) => words(x) !== words(y) || LOOK_ORDER.some((k) => x.look[k] !== y.look[k]) || Math.abs(x.box[2] - y.box[2]) > 2 || Math.abs(x.box[3] - y.box[3]) > 2;
+const differs = ([x, y]: [CensusItem, CensusItem], skip?: string) => words(x) !== words(y) || LOOK_ORDER.some((k) => k !== skip && x.look[k] !== y.look[k]) || Math.abs(x.box[2] - y.box[2]) > 2 || Math.abs(x.box[3] - y.box[3]) > 2;
 
-/** Of two reads of one page with no change between them, the elements that differ: they change on their own (a price, a clock, a depth bar). */
+/**
+ * Of two reads of one page with no change between them, the elements that differ: they change on their own (a price,
+ * a clock, a depth bar). Hover and pressed colors aren't compared: the capture's second read doesn't force them.
+ */
 export function changesOnItsOwn(a: CensusItem[], b: CensusItem[]): CensusItem[] {
   const q = pairUp(a, b);
-  return [...q.gone, ...q.added, ...q.pairs.filter(differs).flatMap(([x, y]) => [x, y])];
+  return [...q.gone, ...q.added, ...q.pairs.filter((p) => differs(p, "states")).flatMap(([x, y]) => [x, y])];
 }
 
 const CONTROL_AT = /^(button|a|link|tab|combobox|checkbox|radio|switch|menuitem|option|input|select|textarea|textbox|searchbox|slider)\b/;

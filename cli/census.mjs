@@ -90,7 +90,7 @@ async function capture() {
         if (opt.hide) await page.addStyle(`${opt.hide}{display:none!important}`);
         await page.move(width - 10, height - 10);
         await page.settle(Number(opt.wait ?? 15000));
-        if (opt.states !== "rules") await forceStates(page);
+        // no forcing: this read only finds what changes on its own, and diff doesn't compare its states
         data.again = { items: (await page.evaluate((r) => window.census.data(r), rules)).items };
       }
       if (opt.tour) await tour(page, rules, data, width, height, url);

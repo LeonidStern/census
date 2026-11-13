@@ -12,7 +12,7 @@ The setup: one production web app (React 19, Next.js), dev build on mock data, 1
 | False claims per read | 0 | 1 |
 | AI read time | **16 s (54% less)** | 35 s |
 | AI cost per read | **~$0.03 (57% less)** | ~$0.07 |
-| Capture per page, before and after | 60 s, 75 s CPU (20% and 150% more) | 50 s, 30 s CPU |
+| Capture per page, before and after | **34 s (29% less)**, 40 s CPU (14% more) | 48 s, 35 s CPU |
 
 ## Design-system check
 
@@ -26,6 +26,15 @@ The task was to find known design-system problems on three pages.
 ## Notes
 
 - AI cost is estimated from tokens at $4 per million in and $20 per million out.
-- CPU is all of Chrome's processes plus the capture, not the app's server. Forcing hover, pressed and focus takes over half of it.
-- Census capture loads each page twice so the diff can leave live data out; `--once` halves its time.
-- Most of the census's CPU time goes to forcing hover, pressed and focus on every control. `--states rules` skips that.
+- CPU is all of Chrome's processes plus the capture, on one page, 3 runs each. It doesn't count the app's server.
+- Both ways load each page an extra time to tell live data apart. Census loads every page twice; screenshots take a second "before" shot. Each screenshot waited 12 s for the page.
+- One capture of one page:
+
+| | CPU | Wall |
+|---|---|---|
+| Census (2 loads) | 20 s | 17 s |
+| Census `--once` | 13 s | 11 s |
+| Screenshot, 12 s wait | 12 s | 16 s |
+| Screenshot after the page settles | 8 s | 7 s |
+
+- Census CPU goes mostly to loading the page (about 60%) and forcing hover, pressed and focus (about 25%). Controls that look and sit alike are forced once. `--states rules` skips forcing.
