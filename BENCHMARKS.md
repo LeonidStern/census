@@ -33,7 +33,7 @@ The intended changes were renaming a link and widening a gap. Each reader got th
 | Input | ~3.5k tokens | ~14k tokens (8 images) |
 | Cost a read | ~$0.03 | ~$0.07 |
 
-Costs are estimates from the input and output sizes at $4 per million input tokens and $20 per million output tokens. A hover color never shows in a still image, and a one-step text color is a few faint red pixels in a pixel diff. The diff names both. The diff confirmed the rename but not the wider gap: it counts moves and groups them, and doesn't measure gaps.
+Costs are estimates from the input and output sizes at $4 per million input tokens and $20 per million output tokens. A hover color never shows in a still image, and a one-step text color is a few faint red pixels in a pixel diff. The diff names both. In these runs the diff confirmed the rename but not the wider gap, because it only counted moves then.
 
 After moves were grouped and removed controls marked `!`, two more runs found 8 of 8 again, with 0 false claims. Both confirmed the gap. Read time was 25–38 s.
 
