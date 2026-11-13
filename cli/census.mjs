@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // census capture: open pages in Chrome (through the DevTools Protocol, no other dependency), take each page's census, write it as text.
-// census prompt: the reader prompt for an AI, with your design system's rules and the census in it.
+// census diff: what changed between two captures.
 // Run with no arguments for the usage.
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -40,11 +40,7 @@ census diff [--live <before2/census.json>] <before/census.json> <after/census.js
   elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
-
-census prompt [options] <census.txt>...
-  --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
-  --app <words>       what the app is ("a recipe site", "the checkout of a shop")
-  Prints the reader prompt: send it to a model with no tools.`;
+`;
 
 const args = process.argv.slice(2);
 const cmd = args.shift();
@@ -187,22 +183,7 @@ async function diff() {
   console.log(out.join("\n").trim());
 }
 
-function prompt() {
-  const files = rest.map((f) => [f.replace(/^.*\//, "").replace(/\.txt$/, ""), readFileSync(f, "utf8").trim()]);
-  const merged = files.length === 1 && /; pages: /.test(files[0][1].split("\n")[0]);
-  const shape = merged ? "the pages merged into one census" : files.length > 1 ? "one census per page" : "one page";
-  const data = files.map(([n, t]) => `<${n}>\n${t}\n</${n}>`).join("\n");
-  const docs = opt.docs ? readFileSync(opt.docs, "utf8").trim() : "(none given: judge only consistency, not values)";
-  return readFileSync(join(here, "../prompt/read.md"), "utf8")
-    .replaceAll("{{APP}}", opt.app ?? "a web app")
-    .replaceAll("{{SHAPE}}", shape)
-    .replaceAll("{{DOCS}}", docs)
-    .replaceAll("{{CENSUS}}", data)
-    .trim();
-}
-
 // run last: the functions above use constants defined after them
 if (cmd === "capture" && rest.length) await capture();
-else if (cmd === "prompt" && rest.length) console.log(prompt());
 else if (cmd === "diff" && rest.length === 2) await diff();
 else { console.log(USAGE); process.exit(cmd ? 1 : 0); }
