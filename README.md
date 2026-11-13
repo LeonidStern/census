@@ -19,7 +19,14 @@ Opus 5.5 read the output with no tools. The test was a production React app with
 | Capture time per PR | **11 s** (31% less) | 16 s | 13 s |
 | Capture CPU per PR | 13 s (8% more) | 12 s | 12 s |
 
-On a design-system check, census found 67% of known problems, screenshots 13%, and Opus with the code, the running app and Playwright 33%, at 5 times the cost. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
+On a design-system check of three pages, Opus was asked to find the known problems:
+
+| | Census | Screenshots | Opus with the code, the app and Playwright |
+|---|---|---|---|
+| Found | **67%** | 13% | 33% |
+| AI cost per read | **~$0.21** | ~$0.21 | ~$1.12 |
+
+The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Output
 
