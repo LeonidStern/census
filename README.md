@@ -98,7 +98,7 @@ On a page with live data (prices, charts, clocks), take a second capture before 
 ```
 census diff: 1 changed, 1 new, 1 gone; 6 only moved (not listed)
 changed (1)
-  button "Share" in header 84,8 62x40: height button 36px→40px; states hover fill surface-3→#333333
+  button "Share" in header 84,8 62x40: height button 36px→40px
 new (1)
   button "Delete" 20,180 66x32: height button 32px; radius 8px; fill #ff0000 OFF (nearest surface-3, 222 away); ...
 gone (1)
