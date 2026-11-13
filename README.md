@@ -2,19 +2,6 @@
 
 Census reads a live web page and writes its styles as text an AI can check. Each value gets your design system's name, and each place names the component that drew it and the file and line that placed it. It takes no screenshots.
 
-```
-fill (4 values)
-  surface-2 ×4: button "Save" in header 8,8 56x32; button "Share" in header 72,8 62x36
-  #1e1e1e ×1 near surface-2: button "Export" in header 143,8 67x32
-radius (2 values)
-  13px ×1 OFF (nearest 12px) (from .card, written out): div 8,60 784x128
-states (2 values)
-  hover fill #333333 OFF (nearest surface-3, 19 away) ×1: button "Export" in header 143,8 67x32
-layout problems (2)
-  cut-text button "A very long label that cannot fit" 20,98 60x32 needs 230x32
-  faint p 20,144 760x18: contrast 1.2:1 (rgb(34,34,34) on rgb(19,19,19))
-```
-
 ## Benchmarks
 
 Opus 5.5 read the output with no tools. The test app was a production React app with 8 planted visual regressions, 3 runs per arm.
@@ -28,6 +15,21 @@ Opus 5.5 read the output with no tools. The test app was a production React app 
 | Capture per page, before and after | 60 s, 15 s CPU | 50 s, 5 s CPU |
 
 On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
+
+## Output
+
+```
+fill (4 values)
+  surface-2 ×4: button "Save" in header 8,8 56x32; button "Share" in header 72,8 62x36
+  #1e1e1e ×1 near surface-2: button "Export" in header 143,8 67x32
+radius (2 values)
+  13px ×1 OFF (nearest 12px) (from .card, written out): div 8,60 784x128
+states (2 values)
+  hover fill #333333 OFF (nearest surface-3, 19 away) ×1: button "Export" in header 143,8 67x32
+layout problems (2)
+  cut-text button "A very long label that cannot fit" 20,98 60x32 needs 230x32
+  faint p 20,144 760x18: contrast 1.2:1 (rgb(34,34,34) on rgb(19,19,19))
+```
 
 ## Install
 
