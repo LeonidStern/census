@@ -25,10 +25,11 @@ const USAGE = `census capture [options] <url | name=url>...
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
 
-census diff <before/census.json> <after/census.json>
+census diff [--live <before2/census.json>] <before/census.json> <after/census.json>
   What changed between two captures of the same pages, page by page: elements whose look changed (before→after),
   elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
-  Places that only moved are counted, not listed.
+  Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
+  that differ between the two before captures change on their own (prices, charts) and are left out.
 
 census prompt [options] <census.txt>...
   --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
@@ -95,7 +96,11 @@ async function capture() {
     console.log(`${name} ${url} read in ${ms} ms`);
   }
   if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
-  writeFileSync(join(out, "census.json"), JSON.stringify(pages));
+  // census.json gets the same file:line places as the text, for census diff
+  const mapAll = async (v) => typeof v === "string" ? (v.includes(" @ ") ? mapSources(v, map) : v)
+    : Array.isArray(v) ? Promise.all(v.map(mapAll))
+    : v && typeof v === "object" ? Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await mapAll(x)]))) : v;
+  writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapAll(pages) : pages));
   await browser.close();
 }
 
@@ -165,11 +170,12 @@ async function tour(page, rules, data, width, height, url) {
 async function diff() {
   const { diffCensus } = await import(join(here, "../dist/census.mjs"));
   const [a, b] = rest.map((f) => JSON.parse(readFileSync(f, "utf8")));
+  const live = opt.live ? JSON.parse(readFileSync(opt.live, "utf8")) : null;
   const names = [...new Set([...Object.keys(a), ...Object.keys(b)])];
   const out = [];
   for (const n of names) {
     if (!a[n] || !b[n]) { out.push(`${n}: only in the ${a[n] ? "before" : "after"} capture`, ""); continue; }
-    out.push(`<${n}>`, ...diffCensus(a[n], b[n]), `</${n}>`, "");
+    out.push(`<${n}>`, ...diffCensus(a[n], b[n], 40, live?.[n]), `</${n}>`, "");
   }
   console.log(out.join("\n").trim());
 }

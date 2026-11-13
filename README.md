@@ -93,10 +93,12 @@ node cli/census.mjs capture --rules rules.json --out after home=http://localhost
 node cli/census.mjs diff before/census.json after/census.json
 ```
 
+On a page with live data (prices, charts, clocks), take a second capture before the change and pass it with `--live same/census.json`: what differs between the two before captures changes on its own and is left out.
+
 ```
 census diff: 1 changed, 1 new, 1 gone; 6 only moved (not listed)
 changed (1)
-  button "Share" in header 84,8 62x40: height button 36px→40px
+  button "Share" in header 84,8 62x40: height button 36px→40px; states hover fill surface-3→#333333
 new (1)
   button "Delete" 20,180 66x32: height button 32px; radius 8px; fill #ff0000 OFF (nearest surface-3, 222 away); ...
 gone (1)
@@ -105,7 +107,7 @@ values new on the page (2)
   fill #ff0000 OFF (nearest surface-3, 222 away) ×1: button "Delete" 20,180 66x32
 ```
 
-Elements are matched by name, part and region. When their words change, such as a live price, they are matched without them. Elements that only moved are counted, not listed. A box that grows because of what's in it isn't listed either. The diff also gives values new on the page or gone from it, parts that gained or lost a look, and layout problems that appeared or were fixed. Give the diff and the change's description to an AI and ask which changes weren't meant.
+Elements are matched by name, part and region. When their words change, they are matched without them and the diff says `words "Old"→"New"`. Elements that only moved are counted, not listed. A box that grows because of what's in it isn't listed either. The diff also gives values new on the page or gone from it, parts that gained or lost a look, and layout problems that appeared or were fixed. Give the diff and the change's description to an AI and ask which changes weren't meant.
 
 ## Ask an AI
 

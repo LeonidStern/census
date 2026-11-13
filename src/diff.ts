@@ -7,14 +7,32 @@ const BOX = /-?\d+,-?\d+ \d+x\d+/g;
 const LOOK_ORDER = ["state", "height", "field", "radius", "fill", "line", "text", "type", "font", "shadow", "states", "set where used", "layer"];
 
 /** "button 32px" → "button 36px" says "button 32px→36px": the words both share are said once. */
-function change(a: string | undefined, b: string | undefined): string {
-  if (a === undefined) return `+${b}`;
-  if (b === undefined) return `-${a}`;
+function one(a: string, b: string): string {
   const x = a.split(" "), y = b.split(" ");
   let i = 0;
   while (i < x.length - 1 && i < y.length - 1 && x[i] === y[i]) i++;
   return `${x.slice(0, i).join(" ")}${i ? " " : ""}${x.slice(i).join(" ")}→${y.slice(i).join(" ")}`;
 }
+
+/** A list ("hover fill a; pressed fill b") changes entry by entry: an entry whose words but the last match is said as one change, the rest as -gone and +new. */
+function change(a: string | undefined, b: string | undefined): string {
+  if (a === undefined) return `+${b}`;
+  if (b === undefined) return `-${a}`;
+  const x = a.split("; "), y = b.split("; ");
+  if (x.length === 1 && y.length === 1) return one(a, b);
+  const come = y.filter((v) => !x.includes(v)), out: string[] = [];
+  const head = (v: string) => v.split(" ").slice(0, -1).join(" ");
+  for (const g of x.filter((v) => !y.includes(v))) {
+    const j = come.findIndex((c) => head(c) === head(g) && head(g) !== "");
+    if (j < 0) { out.push(`-${g}`); continue; }
+    out.push(one(g, come[j]));
+    come.splice(j, 1);
+  }
+  return [...out, ...come.map((c) => `+${c}`)].join(", ");
+}
+
+/** The element's own words, as its place quotes them. */
+const words = (x: CensusItem) => x.at.match(/^[^"[]*"((?:[^"\\]|\\.)*)"/)?.[1];
 
 function pairUp(a: CensusItem[], b: CensusItem[]) {
   const pairs: [CensusItem, CensusItem][] = [];
@@ -44,22 +62,37 @@ const cap = (lines: string[], n: number) => (lines.length > n ? [...lines.slice(
  * What changed between two censuses taken with rules.items. Sections: elements whose look changed (each property
  * before→after), elements that came or went, values the page shows now or no longer (with OFF and near), parts with
  * a new or lost look, and layout problems that appeared or were fixed. Places that only moved are counted.
+ * `live`: a second capture taken before the change; what differs between it and `before` changes on its own
+ * (live data) and is left out of the element lists.
  */
-export function diffCensus(before: Census, after: Census, max = 40): string[] {
+export function diffCensus(before: Census, after: Census, max = 40, live?: Census): string[] {
   const out: string[] = [];
   const a = before.items ?? [], b = after.items ?? [];
-  const { pairs, gone, added } = pairUp(a, b);
+  const all = pairUp(a, b);
+  const differs = ([x, y]: [CensusItem, CensusItem]) => words(x) !== words(y) || LOOK_ORDER.some((k) => x.look[k] !== y.look[k]) || Math.abs(x.box[2] - y.box[2]) > 2 || Math.abs(x.box[3] - y.box[3]) > 2;
+  // live: what differs between two captures with no change in between (prices, depth bars, clocks) is left out
+  const hot: CensusItem[] = [];
+  if (live?.items) {
+    const q = pairUp(a, live.items);
+    hot.push(...q.gone, ...q.added, ...q.pairs.filter(differs).flatMap(([x, y]) => [x, y]));
+  }
+  const isHot = (x: CensusItem) => hot.some((h) => h.loose === x.loose && Math.abs(h.box[1] - x.box[1]) <= 4 && h.box[0] < x.box[0] + x.box[2] + 4 && x.box[0] < h.box[0] + h.box[2] + 4);
+  let skipped = 0;
+  const keep = (x: CensusItem) => (hot.length && isHot(x) ? (skipped++, false) : true);
+  const pairs = all.pairs.filter((p) => !differs(p) || keep(p[1]));
+  const gone = all.gone.filter(keep), added = all.added.filter(keep);
   const changed: string[] = [];
   let moved = 0;
   for (const [x, y] of pairs) {
     const keys = LOOK_ORDER.filter((k) => x.look[k] !== y.look[k]);
     // a size change only for a control or words of their own (a box grows with what's in it), and not again after a height
     const sized = x.id === y.id && !!(y.look.height || y.look.text) && !keys.includes("height") && (Math.abs(x.box[2] - y.box[2]) > 2 || Math.abs(x.box[3] - y.box[3]) > 2);
-    if (keys.length || sized) changed.push(`  ${y.at}: ${[...keys.map((k) => `${k} ${change(x.look[k], y.look[k])}`), ...(sized ? [`size ${x.box[2]}x${x.box[3]}→${y.box[2]}x${y.box[3]}`] : [])].join("; ")}`);
+    const said = words(x) !== words(y) ? [`words "${words(x) ?? ""}"→"${words(y) ?? ""}"`] : [];
+    if (said.length || keys.length || sized) changed.push(`  ${y.at}: ${[...said, ...keys.map((k) => `${k} ${change(x.look[k], y.look[k])}`), ...(sized ? [`size ${x.box[2]}x${x.box[3]}→${y.box[2]}x${y.box[3]}`] : [])].join("; ")}`);
     else if (Math.abs(x.box[0] - y.box[0]) > 2 || Math.abs(x.box[1] - y.box[1]) > 2) moved++;
   }
   if (!before.items || !after.items) out.push("(a census without items: take both with the capture, or rules.items, to compare elements)");
-  out.push(`census diff: ${changed.length} changed, ${added.length} new, ${gone.length} gone; ${moved} only moved (not listed)`);
+  out.push(`census diff: ${changed.length} changed, ${added.length} new, ${gone.length} gone; ${moved} only moved (not listed)${live ? `; ${skipped} live (they change on their own, not listed)` : ""}`);
   if (changed.length) out.push(`changed (${changed.length})`, ...cap(changed, max));
   if (added.length) out.push(`new (${added.length})`, ...cap(added.map((y) => `  ${y.at}: ${lookText(y)}`), max));
   if (gone.length) out.push(`gone (${gone.length})`, ...cap(gone.map((x) => `  ${x.at}: ${lookText(x)}`), max));
