@@ -10,9 +10,10 @@ The setup: one production web app (React 19, Next.js), dev build on mock data, 1
 |---|---|---|
 | Found | **100%** (24 of 24) | 63% (15 of 24) |
 | False claims per read | 0 | 1 |
-| AI read time | **16 s (54% less)** | 35 s |
-| AI cost per read | **~$0.03 (57% less)** | ~$0.07 |
-| Capture per page, before and after | **34 s (29% less)**, 40 s CPU (14% more) | 48 s, 35 s CPU |
+| AI read time | **16 s** (54% less) | 35 s |
+| AI cost per read | **~$0.03** (57% less) | ~$0.07 |
+| Capture time | **34 s** (29% less) | 48 s |
+| Capture CPU | 40 s (14% more) | 35 s |
 
 ## Design-system check
 

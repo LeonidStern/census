@@ -4,15 +4,16 @@ Census reads a live web page and writes its styles as text an AI can check. Each
 
 ## Benchmarks
 
-Opus 5.5 read the output with no tools. The test app was a production React app with 8 planted visual regressions, 3 runs per arm.
+Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm.
 
 | | Census diff | Screenshots + pixel diff |
 |---|---|---|
 | Found | **100%** | 63% |
 | False claims per read | 0 | 1 |
-| AI read time | **16 s (54% less)** | 35 s |
-| AI cost per read | **~$0.03 (57% less)** | ~$0.07 |
-| Capture per page, before and after | **34 s (29% less)**, 40 s CPU (14% more) | 48 s, 35 s CPU |
+| AI read time | **16 s** (54% less) | 35 s |
+| AI cost per read | **~$0.03** (57% less) | ~$0.07 |
+| Capture time | **34 s** (29% less) | 48 s |
+| Capture CPU | 40 s (14% more) | 35 s |
 
 On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 
