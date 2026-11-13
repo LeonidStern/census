@@ -6,13 +6,13 @@ The setup: one production web app (React 19, Next.js), dev build on mock data, 1
 
 8 regressions were planted in the app's code: a hover color, a button height, cut-off text, a link color, a removed link, a corner, a font weight and a dimmer hint.
 
-| | Census diff | Screenshots + pixel diff | Linter (oxlint) |
-|---|---|---|---|
-| Found | **100%** (24 of 24) | 63% (15 of 24) | 25% (2 of 8) |
-| False claims per read | 0 | 1 | 0 |
-| AI read time | **16 s** | 35 s | none |
-| AI cost per read | **~$0.03** | ~$0.07 | none |
-| Capture per page, before and after | 60 s, 15 s CPU | 50 s, 5 s CPU | none |
+| | Census diff | Screenshots + pixel diff |
+|---|---|---|
+| Found | **100%** (24 of 24) | 63% (15 of 24) |
+| False claims per read | 0 | 1 |
+| AI read time | **16 s** | 35 s |
+| AI cost per read | **~$0.03** | ~$0.07 |
+| Capture per page, before and after | 60 s, 15 s CPU | 50 s, 5 s CPU |
 
 ## Design-system check
 
