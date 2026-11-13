@@ -35,9 +35,11 @@ export async function openBrowser({ connect, chrome, width, height }) {
     ws = base.startsWith("ws") ? base : (await (await fetch(`${base.replace(/\/$/, "")}/json/version`)).json()).webSocketDebuggerUrl;
   } else {
     dir = mkdtempSync(join(tmpdir(), "census-"));
-    const flags = ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--mute-audio", `--window-size=${width},${height}`];
+    const bin = await findChrome(chrome);
+    // chrome-headless-shell is headless already and doesn't take --headless=new
+    const flags = [...(/headless.shell/i.test(bin) ? [] : ["--headless=new"]), "--remote-debugging-port=0", `--user-data-dir=${dir}`, "--no-first-run", "--no-default-browser-check", "--hide-scrollbars", "--mute-audio", `--window-size=${width},${height}`];
     if (process.platform === "linux" && process.getuid?.() === 0) flags.push("--no-sandbox");
-    proc = spawn(await findChrome(chrome), [...flags, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+    proc = spawn(bin, [...flags, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
     ws = await new Promise((ok, no) => {
       let err = "";
       const t = setTimeout(() => no(new Error(`Chrome didn't start: ${err.slice(-400)}`)), 30000);

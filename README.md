@@ -4,7 +4,7 @@ Census reads a live web page and writes its styles as text an AI can check. Each
 
 ## Benchmarks
 
-Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm.
+Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm. Capture is per page, with main's capture cached.
 
 | | Census diff | Screenshots + pixel diff |
 |---|---|---|
@@ -12,8 +12,8 @@ Opus 5.5 read the output with no tools. The test was a production React app with
 | False claims per read | 0 | 1 |
 | AI read time | **16 s** (54% less) | 35 s |
 | AI cost per read | **~$0.03** (57% less) | ~$0.07 |
-| Capture time | **34 s** (29% less) | 48 s |
-| Capture CPU | 40 s (14% more) | 35 s |
+| Capture time per PR | **11 s** (31% less) | 16 s |
+| Capture CPU per PR | 13 s (8% more) | 12 s |
 
 On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -50,7 +50,7 @@ npx census capture --rules rules.json --sources --out out home=http://localhost:
 npx census diff before/census.json after/census.json
 ```
 
-**In CI:** keep your linter as the gate. Then capture the base branch and the PR, run `census diff`, and have a model say which changes the PR description doesn't cover. Post that as a comment.
+**In CI:** keep your linter as the gate. Capture main once per commit and cache it. Each PR then captures only its own branch with `--once`, runs `census diff`, and has a model say which changes the PR description doesn't cover, posted as a comment. [examples/census-pr.yml](examples/census-pr.yml) is a ready workflow.
 
 **In Playwright tests:**
 
