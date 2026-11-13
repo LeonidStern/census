@@ -6,16 +6,18 @@ The setup: one production web app (React 19, Next.js), dev build on mock data, 1
 
 8 regressions were planted in the app's code: a hover color, a button height, cut-off text, a link color, a removed link, a corner, a font weight and a dimmer hint.
 
-| | Census diff | Screenshots + pixel diff |
-|---|---|---|
-| Found | **100%** (24 of 24) | 63% (15 of 24) |
-| False claims per read | 0 | 1 |
-| AI read time | **16 s** (54% less) | 35 s |
-| AI cost per read | **~$0.03** (57% less) | ~$0.07 |
-| Capture time per PR | **11 s** (31% less) | 16 s |
-| Capture CPU per PR | 13 s (8% more) | 12 s |
+| | Census diff | Screenshots + pixel diff | Playwright MCP snapshot |
+|---|---|---|---|
+| Found | **100%** (24 of 24) | 63% (15 of 24) | 25% (6 of 24) |
+| False claims per read | 0 | 1 | 0 |
+| AI read time | **16 s** (54% less) | 35 s | 18 s |
+| AI cost per read | **~$0.03** (57% less) | ~$0.07 | ~$0.06 |
+| Capture time per PR | **11 s** (31% less) | 16 s | 13 s |
+| Capture CPU per PR | 13 s (8% more) | 12 s | 12 s |
 
-Per PR, main's capture is cached for both ways: census captures the PR once per page, and screenshots take one shot. Without the cache, a full before/after takes census 34 s and 40 s CPU, and screenshots 48 s and 35 s CPU (3 shots, one to spot live data).
+Per PR, main's capture is cached for every way: census captures the PR once per page, and screenshots take one shot. Without the cache, a full before/after takes census 34 s and 40 s CPU, and screenshots 48 s and 35 s CPU (3 shots, one to spot live data).
+
+The Playwright MCP arm is what an agent sees through `browser_snapshot` (@playwright/mcp 0.0.85, default flags, 1440x900, the same 12 s wait): the accessibility tree with roles, names and text. Its ref ids were stripped so versions line up, and the reader got the before-to-after diff, a before-to-before diff for live data, and the whole after snapshot (about 4 times the census text). Every read found the removed link and the new search label. None could say the label was cut off (it was counted as found) or see the hover, height, colors, corner or weight.
 
 ## Design-system check
 

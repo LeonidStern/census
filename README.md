@@ -8,16 +8,16 @@ Use it to catch visual regressions in a PR, to check a page against your design 
 
 ## Benchmarks
 
-Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm. Capture is per page, with main's capture cached.
+Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm. Capture is per page, with main's capture cached. Percentages compare with screenshots. Playwright MCP's snapshot is the page text most browser agents read today: it has roles and words, but no styles.
 
-| | Census diff | Screenshots + pixel diff |
-|---|---|---|
-| Found | **100%** | 63% |
-| False claims per read | 0 | 1 |
-| AI read time | **16 s** (54% less) | 35 s |
-| AI cost per read | **~$0.03** (57% less) | ~$0.07 |
-| Capture time per PR | **11 s** (31% less) | 16 s |
-| Capture CPU per PR | 13 s (8% more) | 12 s |
+| | Census diff | Screenshots + pixel diff | Playwright MCP snapshot |
+|---|---|---|---|
+| Found | **100%** | 63% | 25% |
+| False claims per read | 0 | 1 | 0 |
+| AI read time | **16 s** (54% less) | 35 s | 18 s |
+| AI cost per read | **~$0.03** (57% less) | ~$0.07 | ~$0.06 |
+| Capture time per PR | **11 s** (31% less) | 16 s | 13 s |
+| Capture CPU per PR | 13 s (8% more) | 12 s | 12 s |
 
 On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 
