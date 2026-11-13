@@ -1,0 +1,29 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>census fixture</title>
+<style>
+  body { margin: 0; background: #000; color: #fff; font: 14px/18px Inter, system-ui, sans-serif; }
+  header { display: flex; gap: 8px; padding: 8px; background: #131313; }
+  .btn { height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: #1d1d1d; color: #fff; font: inherit; }
+  .btn:hover { background: #282828; }
+  .btn.tall { height: 36px; }
+  .btn.odd { background: #1e1e1e; }
+  .btn.odd:hover { background: #333; }
+  .cut { width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .faint { color: #222; }
+  .card { margin: 8px; padding: 12px; border-radius: 13px; background: #131313; box-shadow: 0 4px 6px -1px rgba(0,0,0,.1); }
+</style></head>
+<body>
+  <header>
+    <button class="btn">Save</button>
+    <button class="btn tall">Share</button>
+    <button class="btn odd">Export</button>
+    <button class="btn" aria-pressed="true">Bold</button>
+  </header>
+  <main>
+    <div class="card">
+      <h2 style="font: 600 20px/26px Inter, system-ui, sans-serif; margin: 0">Settings</h2>
+      <button class="btn cut">A very long label that cannot fit</button>
+      <p class="faint">Hard to read</p>
+    </div>
+  </main>
+</body></html>
