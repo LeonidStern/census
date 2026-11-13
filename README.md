@@ -15,6 +15,20 @@ layout problems (2)
   faint p 20,144 760x18: contrast 1.2:1 (rgb(34,34,34) on rgb(19,19,19))
 ```
 
+## Benchmarks
+
+Opus 5.5 read the output with no tools. The test app was a production React app with 8 planted visual regressions, 3 runs per arm.
+
+| | Census diff | Screenshots + pixel diff |
+|---|---|---|
+| Found | **100%** | 63% |
+| False claims per read | 0 | 1 |
+| AI read time | **16 s** | 35 s |
+| AI cost per read | **~$0.03** | ~$0.07 |
+| Capture per page, before and after | 60 s, 15 s CPU | 50 s, 5 s CPU |
+
+On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
+
 ## Install
 
 You need Node 22+ and Chrome, Chromium or Edge.
@@ -90,4 +104,4 @@ Every field is optional. `type` is size/weight/line-height in px.
 - Census only reads the page. `--connect` gives it your signed-in browser, and `--tour` clicks, so use both only on pages you trust.
 - Source maps are fetched only from the captured page's own origin.
 
-[BENCHMARKS.md](BENCHMARKS.md): census diff found 100% of planted regressions, screenshots 63%, at half the AI time and cost. `npm test` runs the tests. [AGENTS.md](AGENTS.md) covers working on the code. MIT licence.
+`npm test` runs the tests. [AGENTS.md](AGENTS.md) covers working on the code. MIT licence.
