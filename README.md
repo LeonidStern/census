@@ -6,7 +6,7 @@ Use it to:
 
 - **Check a design system**: values off the tokens, a part that looks two ways, hover colors that differ.
 - **Catch visual regressions**: `census diff` lists what changed between two captures, element by element, without pixel noise.
-- **Lint what renders**: `census lint` writes each problem as `file:line: warning`, so editors and CI show it like any linter.
+- **Find places to fix**: `census lint` writes each problem as `file:line: warning`, like a linter, for what renders.
 - **Review a page** for layout problems: cut text, overlaps, faint words, covered controls.
 
 ```
@@ -71,14 +71,24 @@ moved (6, in 2 groups)
 
 Give the diff and the change's description to an AI and ask which changes weren't meant.
 
-### Lint in CI
+### Find places to fix
 
 ```bash
 npx census capture --rules rules.json --sources --out out home=http://localhost:3000/
-npx census lint --format github --max-warnings 0 out/census.json
+npx census lint out/census.json
 ```
 
-With `--format github`, each finding shows on the pull request at its file and line. `--max-warnings` fails the step above that many. A linter reads how the code is written; `census lint` reads what renders, so it catches what reaches the screen through variables, the cascade or a default. Use both.
+Each line is `file:line: warning: ... [census/rule] (pages)`, so an agent or an editor can go straight to the line. `--format github` writes GitHub annotations. A linter reads how the code is written; `census lint` reads what renders, so it catches what reaches the screen through variables, the cascade or a default.
+
+### In CI
+
+Run your linter as the gate, as today. For what renders, capture the base branch and the PR's branch, diff them, and have an AI read the diff against the PR's description:
+
+```bash
+npx census diff base/census.json pr/census.json > diff.txt
+```
+
+Send `diff.txt` and the PR's description to a model with no tools, asking which changes the description doesn't cover, and post its answer as a PR comment. A diff lists every change, the intended ones too, so it informs the review rather than failing the build. It already shows the new problems a PR brings: values new on the page, parts that gained a look, layout problems that appeared.
 
 ### In your own Playwright tests
 
