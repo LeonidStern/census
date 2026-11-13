@@ -23,10 +23,13 @@ The Playwright MCP arm is what an agent sees through `browser_snapshot` (@playwr
 
 The task was to find known design-system problems on three pages.
 
-| | Census | Screenshots |
-|---|---|---|
-| Found | **67%** (6 of 9) | 13% (1 of 8) |
-| AI cost per read | ~$0.21 | ~$0.21 |
+| | Census | Screenshots | Opus with the code, the app and Playwright |
+|---|---|---|---|
+| Found | **67%** (6 of 9) | 13% (1 of 8) | 33% (6 of 18, 2 runs) |
+| AI cost per read | **~$0.21** | ~$0.21 | ~$1.12 |
+| False claims per read | | | ~3 |
+
+The third arm is how an agent usually checks: Opus had the repository, the app running, a shell and Playwright, and took about 6 minutes a run. It wrote its own scripts to read computed styles, but only for the elements it thought of: it saw no hover states or closed pop-ups and had to guess which token each value was and which part drew it.
 
 ## Notes
 
