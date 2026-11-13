@@ -1,6 +1,7 @@
 // The census: every style value on screen, counted, named by the design system's own words, with a few places each.
 // It reads the live page from inside: computed styles, element boxes, the page's CSS rules (for hover, pressed and
-// focus colors), ARIA states and, when the page is React, the component tree (which part drew each place). No pixels.
+// focus colors), ARIA states and the component tree of a dev build (React, Vue, Svelte, Angular: which part drew each
+// place, and with `sources`, where in the code it was used). No pixels.
 //
 // styleData(rules) -> Census (data), censusLines(census) -> text for a reader, mergeCensus({page: census}) -> one census.
 // layoutLines() -> the screen as a wireframe with what looks wrong (cut text, overlaps, faint words, covered controls).
@@ -281,8 +282,10 @@ function cross(a: DOMRect, b: DOMRect): DOMRect | null {
  * false` keeps what no component drew (by default, on a page with component
  * names, such a subtree with controls in it is named once and left out).
  * `closed`: also what pop-ups not opened yet would look like (React only).
+ * `sources`: " @ file:line" where a place's part was used, on the places that
+ * need a fix (set where used, off the system, a part in two looks).
  */
-export type StyleRules = { colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean };
+export type StyleRules = { colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean };
 
 /** The census as data: groups of counted values with a few places each. censusLines writes it out; mergeCensus joins pages. */
 export type CensusLook = { state: string; shape: string; skin: string; say: string; n: number; at: string[]; lo?: number; hi?: number };
@@ -371,8 +374,92 @@ const fiberOf = (el: Element): Fiber | null => {
 const propsOf = (f: Fiber, keys = PART_PROPS) => keys.flatMap((k) => { const v = f.memoizedProps?.[k]; return (typeof v === "string" || typeof v === "number") && /^[\w.-]{1,20}$/.test(String(v)) ? [`${k}=${v}`] : []; }).join(" ");
 const named = (f: Fiber) => { const n = compName(f.type); return PLAIN.test(n) && !PLUMBING.test(n) ? n : ""; };
 const family = (name: string) => name.match(/^[A-Za-z][a-z0-9]*/)?.[0] ?? name;
-type Link = { name: string; props: string; fiber: Fiber; gap: boolean };
-type PartInfo = { say: string; key: string; fiber: Fiber | null; listed: boolean; cand: boolean; own: boolean };
+type Link = { name: string; props: string; fiber: Fiber | null; gap: boolean; src?: string };
+type PartInfo = { say: string; key: string; fiber: Fiber | null; listed: boolean; cand: boolean; own: boolean; src?: string };
+
+// ---------- Other frameworks: Vue, Svelte and Angular keep their component names in dev builds too ----------
+
+type Bag = Record<string, unknown>;
+const obj = (v: unknown): Bag | null => (v && typeof v === "object" ? (v as Bag) : null);
+// the variant props of a plain object of props or inputs; an Angular signal input says its value in its name
+const propsIn = (o: Bag | null, keys = PART_PROPS) => (o ? keys.flatMap((k) => {
+  let v = o[k];
+  if (typeof v === "function") { try { v = /^\[(?:Input )?Signal: (.*)\]$/.exec(String(v))?.[1]; } catch { v = undefined; } }
+  return (typeof v === "string" || typeof v === "number") && /^[\w.-]{1,20}$/.test(String(v)) ? [`${k}=${v}`] : [];
+}).join(" ") : "");
+const baseName = (file: unknown) => (typeof file === "string" ? file.replace(/^.*[\\/]/, "").replace(/\.(vue|svelte|[jt]sx?)$/, "") : "");
+/**
+ * The components that returned an element as their root, inner first, when the page is not React:
+ * Vue 3 and Vue 2 (component names and props, the file that used it), Svelte 4 and 5 (the file that
+ * wrote the element; Svelte 5 also the tag and line where the component was used) and Angular (the
+ * host element's component and its inputs). Each only in a dev build; [] when none says.
+ */
+function otherChain(el: Element): Link[] {
+  const e = el as unknown as Bag, out: Link[] = [];
+  const add = (name: string, props: string, src?: string) => { if (PLAIN.test(name) && !PLUMBING.test(name)) out.push({ name, props, fiber: null, gap: false, src }); };
+  // Vue 3: the instance that rendered it, then each parent whose root is the same element
+  for (let inst = obj(e.__vueParentComponent), i = 0; inst && i < 12; inst = obj(inst.parent), i++) {
+    if (obj(inst.subTree)?.el !== el && obj(inst.vnode)?.el !== el) break;
+    const type = obj(inst.type) ?? {};
+    add(String(type.name ?? type.__name ?? "") || baseName(type.__file), propsIn(obj(inst.props)), String(obj(obj(inst.parent)?.type)?.__file ?? "") || undefined);
+  }
+  if (out.length) return out;
+  // Vue 2: __vue__ is the instance whose root this is
+  for (let vm = obj(e.__vue__), i = 0; vm && vm.$el === el && i < 12; vm = obj(vm.$parent), i++) {
+    const o = obj(vm.$options) ?? {};
+    add(String(o.name ?? o._componentTag ?? "") || baseName(o.__file), propsIn(obj(vm.$props)), String(obj(obj(vm.$parent)?.$options)?.__file ?? "") || undefined);
+  }
+  if (out.length) return out;
+  // Svelte: an element written in Button.svelte whose parent element was written elsewhere is Button's root
+  const meta = obj(e.__svelte_meta), file = obj(meta?.loc)?.file;
+  if (typeof file === "string") {
+    const up = obj((el.parentElement as unknown as Bag | null)?.__svelte_meta);
+    if (obj(up?.loc)?.file !== file) {
+      const name = baseName(file);
+      let src: string | undefined;
+      for (let p = obj(meta!.parent), i = 0; p && i < 20; p = obj(p.parent), i++) if (p.type === "component" && (!p.componentTag || p.componentTag === name) && typeof p.file === "string") { src = `${p.file}:${p.line ?? 0}`; break; }
+      add(name, "", src);
+    }
+    return out;
+  }
+  // Angular (dev mode): the component a host element belongs to, or the lone root inside one
+  const ng = obj((globalThis as unknown as Bag).ng);
+  if (ng && typeof ng.getComponent === "function") {
+    const get = ng.getComponent as (x: Element) => unknown;
+    for (const host of [el, el.parentElement && el.parentElement.children.length === 1 ? el.parentElement : null]) {
+      if (!host) continue;
+      let c: Bag | null = null;
+      try { c = obj(get(host)); } catch { c = null; }
+      if (c) { add(String((c.constructor as { name?: string } | undefined)?.name ?? "").replace(/Component$/, ""), propsIn(c)); break; }
+    }
+  }
+  return out;
+}
+
+// ---------- Where a part was used: file and line ----------
+
+// frames of React and the bundler's own code, never the app's
+const NOT_APP = /node_modules|react-dom|react-jsx|jsx-dev-runtime|react-server|scheduler|\(native\)|<anonymous>/;
+/**
+ * The file and line where a component was used (its JSX), from React's dev build: _debugSource (React 18
+ * with the dev JSX transform) as "file:line", else _debugStack (React 19) as up to three frames of the
+ * bundled code, "{url:line:col url:line:col}", which the capture maps through the page's source maps.
+ */
+function fiberSrc(f: Fiber | null): string {
+  const b = obj(f);
+  if (!b) return "";
+  const ds = obj(b._debugSource);
+  if (ds && typeof ds.fileName === "string") return `${ds.fileName}:${ds.lineNumber ?? 0}`;
+  const st = obj(b._debugStack)?.stack;
+  if (typeof st !== "string") return "";
+  const frames: string[] = [];
+  for (const line of st.split("\n").slice(1)) {
+    const m = /((?:https?|file|webpack|turbopack|webpack-internal):\/\/[^\s()]+?):(\d+):(\d+)\)?\s*$/.exec(line);
+    if (m && !NOT_APP.test(m[1])) frames.push(`${m[1]}:${m[2]}:${m[3]}`);
+    if (frames.length === 3) break;
+  }
+  return frames.length ? `{${frames.join(" ")}}` : "";
+}
 /**
  * The part an element is the root of. `say` is how a place names it, `key`
  * the part its looks are counted under, `fiber` the component to ask what
@@ -390,12 +477,12 @@ function partInfo(el: Element, parts?: string[]): PartInfo | null {
     return { say, key: say, fiber: null, listed: !parts?.length || parts.includes(tag), cand: true, own: false };
   }
   const start = fiberOf(el);
-  if (!start) return null;
-  const chain: Link[] = [];
+  let chain: Link[] = [];
   // up from the element to the next element: every component that returned it as its root (16 names at most)
   // `gap`: a context was crossed since the name before, so what is further out wraps this part and isn't it (a Modal around its trigger)
   let gap = false;
-  for (let f = start.return, i = 0; f && typeof f.type !== "string" && chain.length < 16 && i < 80; f = f.return, i++) {
+  if (!start) chain = otherChain(el);
+  else for (let f = start.return, i = 0; f && typeof f.type !== "string" && chain.length < 16 && i < 80; f = f.return, i++) {
     const raw = compName(f.type);
     if (/(Provider|Context|Consumer|Boundary)$/.test(raw)) gap = chain.length > 0;
     else if (PLAIN.test(raw) && !PLUMBING.test(raw)) { chain.push({ name: raw, props: propsOf(f), fiber: f, gap }); gap = false; }
@@ -411,7 +498,7 @@ function partInfo(el: Element, parts?: string[]): PartInfo | null {
   else if (inner) main = reach(inner, (c) => !!c.props);
   else main = chain[0];
   let key = text(main);
-  if (!main.props) {
+  if (!main.props && start) {
     // no variant of its own: a part of a family (TabsTab) takes it from the family's root (TabsList variant=...)
     let hosts = 0;
     for (let f = start.return, i = 0; f && i < 60 && hosts < 6; f = f.return, i++) {
@@ -422,7 +509,7 @@ function partInfo(el: Element, parts?: string[]): PartInfo | null {
   }
   // the part it is drawn with, when that is another part with props of its own (a Badge drawn by a Body)
   const say = inner && inner !== main && inner.name !== main.name && chain.indexOf(inner) < chain.indexOf(main) ? `${key} < ${text(inner)}` : key;
-  return { say, key, fiber: main.fiber, listed, cand: listed || key.includes("="), own: listed || !!main.props };
+  return { say, key, fiber: main.fiber, listed, cand: listed || key.includes("="), own: listed || !!main.props, src: start ? undefined : main.src };
 }
 /**
  * The component that drew an element as its own root, with its variant
@@ -691,11 +778,26 @@ const LOOK = ["height", "min-height", "border-top-left-radius", "background-colo
 const STYLE_KEYS: Record<string, string> = { height: "height", minHeight: "min-height", borderRadius: "border-top-left-radius", background: "background-color", backgroundColor: "background-color", color: "color", fontSize: "font-size", fontWeight: "font-weight", lineHeight: "line-height", letterSpacing: "letter-spacing", fontFamily: "font-family", boxShadow: "box-shadow", borderColor: "border-top-color" };
 
 function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement): Census {
-  type Seen = { n: number; at: string[]; el: Element; parts?: Set<string> };
+  type Seen = { n: number; at: string[]; el: Element; els?: Element[]; parts?: Set<string> };
   const G = () => new Map<string, Seen>();
   const groups = { font: G(), type: G(), text: G(), fill: G(), line: G(), radius: G(), shadow: G(), field: G(), height: G(), states: G(), used: G(), layer: G() };
   const infos = new Map<Element, PartInfo | null>();
   const part = (el: Element) => { let p = infos.get(el); if (p === undefined) { p = partInfo(el, rules.parts); infos.set(el, p); } return p; };
+  // with rules.sources: " @ file:line" where the part that drew a place was used
+  const srcs = new Map<Fiber, string>();
+  const srcOf = (p: PartInfo | null | undefined): string => {
+    if (!rules.sources || !p) return "";
+    let s = p.src ?? "";
+    if (!s && p.fiber) { s = srcs.get(p.fiber) ?? fiberSrc(p.fiber); srcs.set(p.fiber, s); }
+    return s ? ` @ ${s}` : "";
+  };
+  // a place no part drew: where its own element was written (React's dev build, Svelte's)
+  const hostSrc = (el: Element): string => {
+    if (!rules.sources) return "";
+    const loc = obj(obj((el as unknown as Bag).__svelte_meta)?.loc);
+    const s = fiberSrc(fiberOf(el)) || (loc && typeof loc.file === "string" ? `${loc.file}:${loc.line ?? 0}` : "");
+    return s ? ` @ ${s}` : "";
+  };
   // a native control inside a listed part's root (a Field that draws a div around its input): the part drew it. With React's
   // dev build the control says who made it; without, the wrapper must hold this one control (a button put in a Card is not the Card's)
   const owners = new Map<Element, PartInfo | null>();
@@ -732,9 +834,9 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   };
   const add = (g: Map<string, Seen>, k: string, el: Element, r: DOMRect, name: Element = el) => {
     let s = g.get(k);
-    if (!s) g.set(k, (s = { n: 0, at: [], el: name }));
+    if (!s) g.set(k, (s = { n: 0, at: [], el: name, els: [] }));
     s.n++;
-    if (s.at.length < 3) s.at.push(place(el, r, name));
+    if (s.at.length < 3) { s.at.push(place(el, r, name)); s.els?.push(name); }
     return s;
   };
   // each part and variant: the looks it shows, by state; one part in two looks was changed where it's used
@@ -924,7 +1026,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
         const shape = `${ctl ? (hug ? "h=content " : `h${h} `) : ""}r${corner.replaceAll(" ", "/")}`;
         const skin = `${shape} fill ${bg ?? "none"}${op < 0.995 ? ` at ${Math.round(op * 100)}%` : ""}`, say = `${skin}${tc ? ` text ${tc}` : ""}`;
         const key = no ? `${p?.key ?? el.tagName.toLowerCase()} (no DS part)` : within ? `${within.key} ${el.tagName.toLowerCase()}` : p!.key;
-        seenLooks.push({ key, flag: no ? false : within ? within.cand : p!.cand, st, shape, skin, say, h, hug, at: `${nameOf(el)}${where(el)} ${box(boxR)}`, fiber: (within ?? p)?.fiber ?? null });
+        seenLooks.push({ key, flag: no ? false : within ? within.cand : p!.cand, st, shape, skin, say, h, hug, at: `${nameOf(el)}${where(el)} ${box(boxR)}${srcOf(within ?? p)}`, fiber: (within ?? p)?.fiber ?? null });
       }
     }
     // what its use site passed the part: classes and an inline style
@@ -1215,7 +1317,9 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       // where a value off the system or next to another comes from
       if (note && WHENCE[g] && !/\(icon\)/.test(k)) note += whence(s.el, ...WHENCE[g]);
       else if (g === "type" && / \(line height\)$/.test(note)) note += whence(s.el, "line-height", true);
-      return { key, n: s.n, note: note || undefined, at: s.at };
+      // where the part of a place off the system, or set where used, was used in the code
+      const at = rules.sources && (g === "used" || / OFF| near /.test(`${key}${note}`)) ? s.at.map((a, i) => { const e = s.els?.[i]; return e ? `${a}${srcOf(part(e) ?? ownerOf(e)) || hostSrc(e)}` : a; }) : s.at;
+      return { key, n: s.n, note: note || undefined, at };
     });
     if (g === "type") {
       // one size of text with letter-spacing both ways: a style that adds its own tracking

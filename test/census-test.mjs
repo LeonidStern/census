@@ -36,6 +36,18 @@ check(both[6] === "  Button size=xs IN 2 LOOKS (all): h34 r6 fill surface-2 text
 const white = C.parseColor("rgb(255, 255, 255)"), black = C.parseColor("rgba(0, 0, 0, 1)");
 check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor("#ff000080")) === "[255,0,0,0.5019607843137255]" && JSON.stringify(C.parseColor("color(srgb 1 0 0 / 0.5)")) === "[255,0,0,0.5]", "colors read and compared");
 
+// ---------- Source maps ----------
+{
+  const { transform } = await import("esbuild"), { sourceMapper, mapSources } = await import("../cli/sourcemap.mjs");
+  const src = "type N = number;\n\nconst a: N = 1;\n\nexport function f(): N {\n  return a + 1;\n}\n";
+  const { code } = await transform(src, { loader: "ts", sourcemap: "inline", sourcefile: "src/f.ts", format: "esm" });
+  const lines = code.split("\n"), L = lines.findIndex((l) => l.includes("return a")) + 1, C = lines[L - 1].indexOf("return") + 1;
+  const map = sourceMapper(async (u) => (u === "http://x/f.js" ? code : null), "/app");
+  check((await map(`http://x/f.js:${L}:${C}`)) === "src/f.ts:6", "a bundled place maps back to its file and line");
+  const text = await mapSources(`  fill #123 OFF: div 1,1 2x2 @ {http://x/node.js:1:1 http://x/f.js:${L}:${C}}; div 3,3 1x1 @ {http://x/none.js:1:1}`, map);
+  check(text === "  fill #123 OFF: div 1,1 2x2 @ src/f.ts:6; div 3,3 1x1", `frames: the first that maps into the app's files, none when nothing maps: ${text}`);
+}
+
 // ---------- A real page ----------
 let chromium;
 try { ({ chromium } = createRequire(import.meta.url)("playwright")); } catch { console.log("skip the page test: Playwright is not installed"); }
@@ -56,5 +68,58 @@ if (chromium) {
   has(/cut-text .*A very long label/, "cut text is a layout problem");
   has(/faint .*contrast/, "faint words are a layout problem");
 }
+// ---------- Other frameworks: Vue 3 and Svelte 5 dev builds, Angular's dev hook ----------
+if (chromium) {
+  const req = createRequire(import.meta.url);
+  let vue = null, svelte = null;
+  try { vue = req.resolve("vue/dist/vue.global.js"); } catch { console.log("skip Vue: not installed"); }
+  try {
+    const { build } = await import("esbuild"), { compile } = await import("svelte/compiler");
+    const root = fileURLToPath(new URL("..", import.meta.url));
+    const r = await build({ entryPoints: [fileURLToPath(new URL("svelte/main.js", import.meta.url))], bundle: true, write: false, format: "iife", conditions: ["svelte", "browser", "development"], logLevel: "silent",
+      plugins: [{ name: "svelte", setup(b) { b.onLoad({ filter: /\.svelte$/ }, (a) => ({ contents: compile(readFileSync(a.path, "utf8"), { filename: a.path.replace(root, ""), dev: true, generate: "client" }).js.code, loader: "js" })); } }] });
+    svelte = r.outputFiles[0].text;
+  } catch (e) { console.log(`skip Svelte: ${String(e).slice(0, 80)}`); }
+  const b = await chromium.launch();
+  const read = async (setup, rules = {}) => {
+    const page = await b.newPage({ viewport: { width: 800, height: 400 } });
+    await page.setContent("<!doctype html><html><head><style>body{margin:0;background:#000;color:#fff;font:14px/18px sans-serif}.btn{height:32px;border:0;border-radius:8px;background:#1d1d1d;color:#fff}.ghost{background:#282828}</style></head><body></body></html>");
+    await page.addScriptTag({ content: readFileSync(new URL("../dist/census.js", import.meta.url), "utf8") });
+    await setup(page);
+    await page.waitForTimeout(100);
+    const t = (await page.evaluate((r) => window.census.lines(window.census.data(r)), rules)).join("\n");
+    await page.close();
+    return t;
+  };
+  if (vue) {
+    const t = await read(async (page) => {
+      await page.addScriptTag({ path: vue });
+      await page.evaluate(() => {
+        const AppButton = { name: "AppButton", props: { variant: String }, template: '<button :class="[\'btn\', variant]"><slot/></button>' };
+        window.Vue.createApp({ components: { AppButton }, template: '<header><AppButton variant="primary">Save</AppButton><AppButton variant="ghost">Share</AppButton></header>' }).mount(document.body);
+      });
+    });
+    check(/\[AppButton variant=primary\]/.test(t) && /\[AppButton variant=ghost\]/.test(t), `Vue 3: a place names its component and variant${/AppButton/.test(t) ? "" : `\n${t}`}`);
+  }
+  if (svelte) {
+    const t = await read(async (page) => { await page.addScriptTag({ content: svelte }); }, { sources: true, colors: { "surface-0": "#000", "surface-2": "#1d1d1d", white: "#fff" } });
+    check(/button "Save" \[Button\]/.test(t), `Svelte 5: a place names its component (from the file that wrote it)${/\[Button\]/.test(t) ? "" : `\n${t}`}`);
+    check(/#282828 ×1 OFF.*button "Share" \[Button\].* @ test\/svelte\/App\.svelte:7/.test(t), `Svelte 5 with sources: a value off the system says where its part was used${/App\.svelte:7/.test(t) ? "" : `\n${t}`}`);
+  }
+  {
+    // Angular's dev mode answers ng.getComponent(host); this stands in for it
+    const t = await read(async (page) => {
+      await page.evaluate(() => {
+        document.body.innerHTML = '<header><app-button><button class="btn">Save</button></app-button><app-button><button class="btn ghost">Share</button></app-button></header>';
+        class AppButtonComponent { constructor(v) { this.variant = v; } }
+        const hosts = [...document.querySelectorAll("app-button")], made = new Map(hosts.map((h, i) => [h, new AppButtonComponent(i ? "ghost" : "primary")]));
+        window.ng = { getComponent: (el) => made.get(el) ?? null };
+      });
+    });
+    check(/button "Save" \[AppButton variant=primary\]/.test(t) && /button "Share" \[AppButton variant=ghost\]/.test(t), `Angular: a host's component and its inputs${/AppButton/.test(t) ? "" : `\n${t}`}`);
+  }
+  await b.close();
+}
+
 console.log(fails ? `${fails} failed` : "all passed");
 process.exit(fails ? 1 : 0);

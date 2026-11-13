@@ -27,7 +27,8 @@ The census never takes pixels. Running inside the page, it reads:
 - **Computed styles** of every visible element: colors, type, corners, shadows and heights.
 - **Boxes**, for place and size, text that is cut off, and what covers what.
 - **The page's CSS rules**, for hover, pressed and focus colors, ranked the way the cascade ranks them.
-- **The component tree** on React pages: which part drew a place, and with which variant props. On other pages, mark a part with `data-part="Button"`.
+- **The component tree**: which part drew a place, and with which variant props (`variant`, `size`, `tone` and the like). This works in the dev builds of React, Vue 3, Vue 2, Svelte and Angular. On any other page, mark a part with `data-part="Button"` and `data-variant`.
+- **Where each part was used**, with `--sources`: the file and line of the JSX or template that placed it. This comes from React's dev build, mapped through the page's source maps, and from Vue and Svelte's dev builds.
 - **ARIA roles and states** (selected, disabled, open) and the words on the app's own controls.
 
 ## Capture
@@ -50,6 +51,7 @@ Options:
 - `--hide <css>`: elements to hide first, such as a dev overlay or a cookie banner.
 - `--tour`: also opens each pop-up once and adds its look. It clicks what has `aria-haspopup` or `aria-expanded=false`, hovers a few labeled buttons, and never submits a form.
 - `--closed`: also says how pop-ups that aren't open yet will look (React pages).
+- `--sources`: adds where the part was used in the code (`@ src/app/footer/Footer.tsx:73`) to the places that need a fix: values set where used, values off the system, and a part in two looks. A value no part drew gets the line of its own element. Use `--root <dir>` to write paths relative to your project.
 
 ### rules.json
 
@@ -81,6 +83,17 @@ node cli/census.mjs prompt --docs ds-rules.md --app "a recipe site" out/all.txt 
 ```
 
 `ds-rules.md` is your design system's rules in a few lines of words. The prompt tells the reader what each group means and how to judge: a variant, size or state is the design system's choice, not an inconsistency. Send the prompt to a model with no tools. We use Opus; in our tests, smaller models made more wrong claims.
+
+## For agents
+
+An agent runs the capture CLI and reads the text files. That's one command and no browser handling. With `--sources`, it can go straight to the line to fix.
+
+An agent that already drives a browser, through Playwright MCP, Chrome DevTools MCP or its own script, can skip the CLI:
+
+1. Run the contents of `dist/census.js` in the page (an evaluate call). It sets `window.census`.
+2. Run `census.lines(census.data(rules)).join("\n")` and read the text.
+
+This route maps no source maps, so React 19's places stay bundled-code frames (`@ {url:line:col …}`).
 
 ## In your own page
 

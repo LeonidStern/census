@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mapSources, sourceMapper } from "./sourcemap.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const USAGE = `census capture [options] <url | name=url>...
@@ -19,6 +20,10 @@ const USAGE = `census capture [options] <url | name=url>...
   --tour              also open each pop-up once (a click on what has aria-haspopup or aria-expanded=false,
                       a hover on a few labeled buttons; never a submit) and add what it showed
   --closed            also say what pop-ups not opened yet will look like (React pages)
+  --sources           add where each part was used in the code ("@ src/ui/Header.tsx:42") to the places
+                      that matter (set where used, values off the system, a part in two looks). Needs a dev
+                      build; React 19's places are mapped through the page's source maps
+  --root <dir>        the project folder, to write source paths relative to it (default: the current one)
 
 census prompt [options] <census.txt>...
   --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
@@ -30,7 +35,7 @@ const cmd = args.shift();
 const opt = {}, rest = [];
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === "--tour" || a === "--closed") opt[a.slice(2)] = true;
+  if (a === "--tour" || a === "--closed" || a === "--sources") opt[a.slice(2)] = true;
   else if (a.startsWith("--")) opt[a.slice(2)] = args[++i];
   else rest.push(a);
 }
@@ -44,6 +49,7 @@ async function capture() {
   catch { ({ chromium } = createRequire(import.meta.url)("playwright")); }
   const rules = opt.rules ? JSON.parse(readFileSync(opt.rules, "utf8")) : {};
   if (opt.closed) rules.closed = true;
+  if (opt.sources) rules.sources = true;
   const [width, height] = (opt.size ?? "1440x900").split("x").map(Number);
   const out = opt.out ?? "out";
   mkdirSync(out, { recursive: true });
@@ -51,6 +57,8 @@ async function capture() {
   const ctx = await browser.newContext({ viewport: { width, height }, ...(opt.storage ? { storageState: opt.storage } : {}) });
   await ctx.addInitScript({ content: readFileSync(join(here, "../dist/census.js"), "utf8") });
   const page = await ctx.newPage();
+  const map = sourceMapper(async (u) => { const r = await ctx.request.get(u); return r.ok() ? r.text() : null; }, opt.root ?? process.cwd());
+  const say = async (lines) => { const t = lines.join("\n") + "\n"; return opt.sources ? mapSources(t, map) : t; };
   const pages = {};
   for (const [i, spec] of rest.entries()) {
     const m = spec.match(/^([\w-]+)=(.+)$/);
@@ -66,10 +74,10 @@ async function capture() {
     const ms = Date.now() - t;
     if (opt.tour) await tour(page, rules, data, width, height, url);
     pages[name] = data;
-    writeFileSync(join(out, `${name}.txt`), (await page.evaluate((d) => window.census.lines(d), data)).join("\n") + "\n");
+    writeFileSync(join(out, `${name}.txt`), await say(await page.evaluate((d) => window.census.lines(d), data)));
     console.log(`${name} ${url} read in ${ms} ms`);
   }
-  if (rest.length > 1) writeFileSync(join(out, "all.txt"), (await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)).join("\n") + "\n");
+  if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
   writeFileSync(join(out, "census.json"), JSON.stringify(pages));
   await browser.close();
 }
