@@ -1,21 +1,32 @@
 # Census
 
-Census reads a live web page and writes its styles as text an AI can check. Each value gets your design system's name, and each place names the component that drew it and the file and line that placed it. It takes no screenshots.
+**Eyes for a blind agent.**
+
+An AI agent can't see a web page. Census reads the page in the browser and writes what's on screen as text: every color, size, corner and state, named by your design system, with the component that drew it and the file and line that placed it. The agent then checks the page as it checks code. It takes no screenshots.
+
+Use it to catch visual regressions in a PR, to check a page against your design system, or to give any browser agent a page it can read.
 
 ## Benchmarks
 
-Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm. Capture is per page, with main's capture cached.
+Opus 5.5 read the output with no tools. The test was a production React app with 8 planted visual regressions, checked per page before and after, with 3 runs per arm. Capture is per page, with main's capture cached. Percentages compare with screenshots. Playwright MCP's snapshot is the page text most browser agents read today: it has roles and words, but no styles.
 
-| | Census diff | Screenshots + pixel diff |
-|---|---|---|
-| Found | **100%** | 63% |
-| False claims per read | 0 | 1 |
-| AI read time | **16 s** (54% less) | 35 s |
-| AI cost per read | **~$0.03** (57% less) | ~$0.07 |
-| Capture time per PR | **11 s** (31% less) | 16 s |
-| Capture CPU per PR | 13 s (8% more) | 12 s |
+| | Census diff | Screenshots + pixel diff | Playwright MCP snapshot |
+|---|---|---|---|
+| Found | **100%** | 63% | 25% |
+| False claims per read | 0 | 1 | 0 |
+| AI read time | **16 s** (54% less) | 35 s | 18 s |
+| AI cost per read | **~$0.03** (57% less) | ~$0.07 | ~$0.06 |
+| Capture time per PR | **11 s** (31% less) | 16 s | 13 s |
+| Capture CPU per PR | 13 s (8% more) | 12 s | 12 s |
 
-On a design-system check, census found 67% of known problems and screenshots 13%. The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
+On a design-system check of three pages, Opus was asked to find the known problems:
+
+| | Census | Screenshots | Opus with the code, the app and Playwright |
+|---|---|---|---|
+| Found | **67%** | 13% | 33% |
+| AI cost per read | **~$0.21** | ~$0.21 | ~$1.12 |
+
+The setup and notes are in [BENCHMARKS.md](BENCHMARKS.md).
 
 ## Output
 
