@@ -493,7 +493,7 @@ function partInfo(el: Element, parts?: string[]): PartInfo | null {
   let main = chain.find((c) => parts?.includes(c.name));
   const listed = !!main;
   const reach = (from: Link, ok: (c: Link) => boolean) => { let to = from; for (const c of chain.slice(chain.indexOf(from) + 1)) { if (c.gap) break; if (ok(c)) to = c; } return to; };
-  // a kit's part inside the system's part of the same family (the kit's Toggle in a ToggleGroupItem, its PopoverTrigger in PopoverTrigger variant=panel): the outermost is the part
+  // a kit's part inside the system's part of the same family (a kit's Toggle inside the system's ToggleButton): the outermost is the part
   if (main) main = reach(main, (c) => !!parts?.includes(c.name) && family(c.name) === family(main!.name));
   else if (inner) main = reach(inner, (c) => !!c.props);
   else main = chain[0];
@@ -513,11 +513,11 @@ function partInfo(el: Element, parts?: string[]): PartInfo | null {
 }
 /**
  * The component that drew an element as its own root, with its variant
- * props ("Button variant=tertiary size=xs"): a `data-part` attribute (and
+ * props ("Button variant=secondary size=sm"): a `data-part` attribute (and
  * `data-variant`, `data-size`) if the app sets one, else React's own
  * component names, which dev builds keep. A part with no variant of its own
  * takes its family's ("TabsTab of TabsList variant=secondary"), and a part
- * drawn with another names both ("Badge variant=leverage < Body size=xxxs").
+ * drawn with another names both ("Badge variant=info < Text size=sm").
  * Only short word-like prop values of the PART_PROPS keys, never text. ""
  * when nothing says.
  */

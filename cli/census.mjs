@@ -57,7 +57,17 @@ async function capture() {
   const ctx = await browser.newContext({ viewport: { width, height }, ...(opt.storage ? { storageState: opt.storage } : {}) });
   await ctx.addInitScript({ content: readFileSync(join(here, "../dist/census.js"), "utf8") });
   const page = await ctx.newPage();
-  const map = sourceMapper(async (u) => { const r = await ctx.request.get(u); return r.ok() ? r.text() : null; }, opt.root ?? process.cwd());
+  // source maps come only from the captured pages' own origins (a page's stack frames could name any address), at most 64 MB each
+  const origins = new Set(rest.map((x) => { try { return new URL(x.replace(/^[\w-]+=/, "")).origin; } catch { return ""; } }).filter((o) => /^https?:/.test(o)));
+  const map = sourceMapper(async (u) => {
+    let url;
+    try { url = new URL(u); } catch { return null; }
+    if (!origins.has(url.origin)) return null;
+    const r = await ctx.request.get(url.href, { maxRedirects: 0, timeout: 30000 });
+    if (!r.ok() || Number(r.headers()["content-length"] ?? 0) > 64e6) return null;
+    const t = await r.text();
+    return t.length > 64e6 ? null : t;
+  }, opt.root ?? process.cwd());
   const say = async (lines) => { const t = lines.join("\n") + "\n"; return opt.sources ? mapSources(t, map) : t; };
   const pages = {};
   for (const [i, spec] of rest.entries()) {

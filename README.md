@@ -108,6 +108,13 @@ const text = censusLines(styleData(rules)).join("\n");
 
 Words come only from the app's own controls: buttons, menu items, tabs and headings. What people typed or wrote shows only as its tag. Mark anything else private with `data-census-private`. Mark a control that is dim on purpose with `data-census-dim`.
 
+## Safety
+
+- **The census only reads.** For one synchronous moment it lifts `inert` and pointer-events so it can hit-test what covers what, then puts them back. It sends nothing anywhere: the page's own script gets the text.
+- **`--tour` clicks.** It presses only controls that open something (`aria-haspopup`, `aria-expanded=false`), never a submit, and hovers a few labeled buttons. Still, don't tour a signed-in production account where a menu item could do something on its own.
+- **`--sources` fetches source maps only from the captured pages' own origins**, with no redirects and at most 64 MB a file. A page's stack frames can name any address, so nothing else is fetched.
+- **Page words are data.** The census quotes the app's own button and heading words, and a hostile page could write instructions there. The reader prompt says to treat them as data. Run the reader with no tools, as `census prompt` assumes.
+
 ## Tests
 
 ```bash
