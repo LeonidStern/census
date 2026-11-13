@@ -51,7 +51,9 @@ It writes `out/home.txt`, `out/cart.txt`, `out/all.txt` (the pages merged: a val
 Options:
 
 - `--size 1440x900`: the window size.
-- `--wait 3000`: how long to wait after load, in ms.
+- `--wait 15000`: the longest to wait for the page to settle, in ms. The capture reads as soon as no request is loading and the page's controls have held still for 0.6 s. Words and numbers may keep changing.
+- `--once`: load each page once. By default the capture loads each page twice and keeps what differed between the two reads, for `census diff`.
+- `--clock 2026-01-01T12:00:00Z`: start the page's clock at this time on every load, so a time on screen reads the same in two captures.
 - `--wait-for <css>`: an element to wait for first.
 - `--connect 9222`: use a Chrome that already runs with `--remote-debugging-port=9222`, such as your own signed-in one. The capture opens a tab of its own and closes it when done. Pages behind a sign-in then need nothing else.
 - `--chrome <path>`: which browser to start (default: the installed Chrome, Chromium or Edge, or `CENSUS_CHROME`).
@@ -96,21 +98,24 @@ node cli/census.mjs capture --rules rules.json --out after home=http://localhost
 node cli/census.mjs diff before/census.json after/census.json
 ```
 
-On a page with live data (prices, charts, clocks), take a second capture before the change and pass it with `--live same/census.json`: what differs between the two before captures changes on its own and is left out.
+Live data (prices, charts, clocks, data made up per load) is left out by itself. The capture loads each page twice, and anything that differs between the two reads changes on its own. `--live other/census.json` adds another capture taken before the change.
 
 ```
-census diff: 1 changed, 1 new, 1 gone; 6 only moved (not listed)
+census diff: 1 changed, 1 new, 1 gone (1 of them controls, marked !), 6 only moved
 changed (1)
   button "Share" in header 84,8 62x40: height button 36px→40px
 new (1)
   button "Delete" 20,180 66x32: height button 32px; radius 8px; fill #ff0000 OFF (nearest surface-3, 222 away); ...
 gone (1)
-  button "Bold" (selected) in header 218,8 54x32: state selected; height button 32px; ...
+  ! button "Bold" (selected) in header 218,8 54x32: state selected; height button 32px; ...
+moved (6, in 2 groups)
+  4 moved 4px down (area 8,64 784x160): h2 "Settings"; button "A very long label that cannot fit"; div; p
+  in header, 2 moved 12px right (area 20,8 202x32): button "Save"; button "Export"
 values new on the page (2)
   fill #ff0000 OFF (nearest surface-3, 222 away) ×1: button "Delete" 20,180 66x32
 ```
 
-Elements are matched by name, part and region. When their words change, they are matched without them and the diff says `words "Old"→"New"`. Elements that only moved are counted, not listed. A box that grows because of what's in it isn't listed either. The diff also gives values new on the page or gone from it, parts that gained or lost a look, and layout problems that appeared or were fixed. Give the diff and the change's description to an AI and ask which changes weren't meant.
+Elements are matched by name, part and region. When their words change, they are matched without them and the diff says `words "Old"→"New"`. Moves are grouped by where and how far, so "the footer's links moved 4, 8 and 12 px left" reads as a wider gap. A control that went is marked `!`: something a person could press before and can't now. A box that grows because of what's in it isn't listed either. The diff also gives values new on the page or gone from it, parts that gained or lost a look, and layout problems that appeared or were fixed. Give the diff and the change's description to an AI and ask which changes weren't meant.
 
 ## Ask an AI
 

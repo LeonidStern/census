@@ -294,7 +294,7 @@ export type CensusRow = { key: string; n: number; note?: string; at: string[]; l
 export type CensusGroup = { name: string; what?: string; rows: CensusRow[]; more?: number };
 /** One element's look, for a diff between two captures (rules.items): `id` names it with its words, `loose` without them. */
 export type CensusItem = { id: string; loose: string; at: string; box: [number, number, number, number]; look: Record<string, string> };
-export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[] };
+export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[]; /** a second read a moment later, by the capture */ again?: { items?: CensusItem[] } };
 
 type RGBA = [number, number, number, number];
 const hex = (c: RGBA) => `#${c.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}${c[3] < 0.995 ? Math.round(c[3] * 255).toString(16).padStart(2, "0") : ""}`;

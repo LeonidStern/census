@@ -84,9 +84,39 @@ async function connectWs(url) {
 }
 
 class Page {
-  constructor(conn, session, target, width, height) { Object.assign(this, { conn, session, target, width, height }); }
+  constructor(conn, session, target, width, height) {
+    Object.assign(this, { conn, session, target, width, height });
+    // requests in flight, to know when the page has its data
+    this.open = new Map();
+    conn.on((m) => {
+      if (m.sessionId !== session) return;
+      if (m.method === "Network.requestWillBeSent") this.open.set(m.params.requestId, { type: m.params.type, at: Date.now() });
+      else if (m.method === "Network.loadingFinished" || m.method === "Network.loadingFailed") this.open.delete(m.params.requestId);
+    });
+  }
+  /** Requests still loading, leaving out streams (EventSource, a long poll) open for more than 5 s. */
+  busy() { const now = Date.now(); return [...this.open.values()].filter((r) => r.type !== "EventSource" && r.type !== "WebSocket" && now - r.at < 5000).length; }
+  /**
+   * Waits until the page settles: no request loading and the same controls in the same places for `quiet` ms, at most `max` ms.
+   * Words and numbers may keep changing (a clock, a price): only what the page is made of has to hold still. Returns the ms it took, or null.
+   */
+  async settle(max = 15000, quiet = 600) {
+    const t = Date.now();
+    let last = "", since = Date.now();
+    while (Date.now() - t < max) {
+      const sig = await this.evaluate(() => {
+        const out = [document.querySelectorAll("*").length, document.documentElement.scrollHeight];
+        for (const e of document.querySelectorAll("button,a[href],input,select,textarea,[role],img,svg,canvas")) { const r = e.getBoundingClientRect(); if (r.width && r.height) out.push(Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)); }
+        return out.join(",");
+      }).catch(() => "");
+      if (sig !== last || this.busy()) { last = sig; since = Date.now(); }
+      else if (Date.now() - since >= quiet) return Date.now() - t;
+      await sleep(150);
+    }
+    return null;
+  }
   send(method, params) { return this.conn.send(method, params, this.session); }
-  async init({ script, storage }) {
+  async init({ script, storage, clock }) {
     await Promise.all(["Page.enable", "Runtime.enable", "DOM.enable", "CSS.enable", "Network.enable"].map((m) => this.send(m)));
     await this.send("Emulation.setDeviceMetricsOverride", { width: this.width, height: this.height, deviceScaleFactor: 1, mobile: false });
     if (storage) {
@@ -97,6 +127,14 @@ class Page {
         const set = `if (location.origin === ${JSON.stringify(o.origin)}) for (const [k, v] of ${JSON.stringify((o.localStorage ?? []).map((x) => [x.name, x.value]))}) try { localStorage.setItem(k, v); } catch {}`;
         await this.send("Page.addScriptToEvaluateOnNewDocument", { source: set });
       }
+    }
+    if (clock) {
+      // the page's clock starts at `clock` on each load and runs from there, so a time on screen reads the same in two captures
+      const at = Date.parse(clock);
+      if (Number.isNaN(at)) throw new Error(`--clock ${clock}: not a date`);
+      await this.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => { const R = Date, at = ${at}, t0 = performance.now(), now = () => at + Math.floor(performance.now() - t0);
+        class D extends R { constructor(...a) { a.length ? super(...a) : super(now()); } static now() { return now(); } }
+        globalThis.Date = D; })();` });
     }
     if (script) await this.send("Page.addScriptToEvaluateOnNewDocument", { source: script });
   }

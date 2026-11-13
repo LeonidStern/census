@@ -13,7 +13,12 @@ const USAGE = `census capture [options] <url | name=url>...
   --rules <file>      the design system's values (JSON, see README): colors, type, radii, parts, shadows, ignore
   --out <dir>         where to write <name>.txt, all.txt (pages merged) and census.json (default: out)
   --size <WxH>        window size (default 1440x900)
-  --wait <ms>         wait after load before reading (default 3000)
+  --wait <ms>         the longest to wait for the page to settle after load: no request loading and its controls
+                      holding still for 0.6 s (default 15000)
+  --once              read each page once (by default it loads each page twice and keeps what differs between the two
+                      reads in census.json: it changes on its own, and census diff leaves it out)
+  --clock <time>      start the page's clock at this time on every load ("2026-01-01T12:00:00Z"), so a time on screen
+                      reads the same in two captures
   --wait-for <css>    wait for this element first
   --connect <port>    use a Chrome that already runs with --remote-debugging-port=<port> (your own, signed in):
                       the capture opens a tab of its own and closes it after
@@ -45,7 +50,7 @@ const cmd = args.shift();
 const opt = {}, rest = [];
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === "--tour" || a === "--closed" || a === "--sources") opt[a.slice(2)] = true;
+  if (a === "--tour" || a === "--closed" || a === "--sources" || a === "--once") opt[a.slice(2)] = true;
   else if (a.startsWith("--")) opt[a.slice(2)] = args[++i];
   else rest.push(a);
 }
@@ -60,7 +65,7 @@ async function capture() {
   mkdirSync(out, { recursive: true });
   const browser = await openBrowser({ connect: opt.connect, chrome: opt.chrome, width, height });
   const page = await browser.newPage();
-  await page.init({ script: readFileSync(join(here, "../dist/census.js"), "utf8"), storage: opt.storage ? JSON.parse(readFileSync(opt.storage, "utf8")) : null });
+  await page.init({ script: readFileSync(join(here, "../dist/census.js"), "utf8"), storage: opt.storage ? JSON.parse(readFileSync(opt.storage, "utf8")) : null, clock: opt.clock });
   // source maps come only from the captured pages' own origins (a page's stack frames could name any address), at most 64 MB each;
   // the page fetches them, so they come as the page sees them (its cookies, its cache)
   const origins = new Set(rest.map((x) => { try { return new URL(x.replace(/^[\w-]+=/, "")).origin; } catch { return ""; } }).filter((o) => /^https?:/.test(o)));
@@ -83,20 +88,32 @@ async function capture() {
     for (const [i, spec] of rest.entries()) {
       const m = spec.match(/^([\w-]+)=(.+)$/);
       const name = m ? m[1] : rest.length > 1 ? `page${i + 1}` : "page", url = m ? m[2] : spec;
+      const t0 = Date.now();
       await page.goto(url);
       if (opt["wait-for"]) await page.waitFor(opt["wait-for"]);
-      await page.sleep(Number(opt.wait ?? 3000));
       if (opt.hide) await page.addStyle(`${opt.hide}{display:none!important}`);
       await page.move(width - 10, height - 10);
-      await page.sleep(500);
+      const settled = await page.settle(Number(opt.wait ?? 15000));
       const t = Date.now();
       const n = await forceStates(page);
       const data = await page.evaluate((r) => window.census.data(r), rules);
       const ms = Date.now() - t;
+      // a second read, of the page loaded again: what differs changes on its own (a price, a clock, data made up per
+      // load), and census diff leaves it out
+      if (!opt.once) {
+        await page.goto(url);
+        if (opt["wait-for"]) await page.waitFor(opt["wait-for"]);
+        if (opt.hide) await page.addStyle(`${opt.hide}{display:none!important}`);
+        await page.move(width - 10, height - 10);
+        await page.settle(Number(opt.wait ?? 15000));
+        await forceStates(page);
+        data.again = { items: (await page.evaluate((r) => window.census.data(r), rules)).items };
+      }
       if (opt.tour) await tour(page, rules, data, width, height, url);
       pages[name] = data;
       writeFileSync(join(out, `${name}.txt`), await say(await page.evaluate((d) => window.census.lines(d), data)));
-      console.log(`${name} ${url} read in ${ms} ms (${n} controls hovered, pressed and focused)`);
+      const live = data.again ? (await import("../dist/census.mjs")).changesOnItsOwn(data.items, data.again.items).filter((x) => data.items.includes(x)).length : 0;
+      console.log(`${name} ${url}: ${settled === null ? `didn't settle in ${opt.wait ?? 15000} ms (requests still loading or the page still moving)` : `loaded and settled in ${t - t0} ms`}; read in ${ms} ms (${n} controls hovered, pressed and focused)${data.again ? `; ${live} elements change on their own` : ""}`);
     }
     if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
     // census.json gets the same file:line places as the text, for census diff

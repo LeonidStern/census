@@ -71,8 +71,13 @@ if (chromium) {
   });
   const after = await p2.evaluate((r) => window.census.data({ ...r, items: true }), rules);
   const d = C.diffCensus(before, after).join("\n");
-  check(/^census diff: 1 changed, 1 new, 1 gone; [1-9]\d* only moved/.test(d) && /button "Share" in header .*: height button 36px→40px/.test(d) && /new \(1\)\n  button "Delete".*fill #ff0000 OFF/.test(d)
-    && /gone \(1\)\n  button "Bold" \(selected\)/.test(d) && /values new on the page \(\d+\)\n  fill #ff0000 OFF/.test(d), "a diff: what changed, came and went; what only moved is counted") || console.log(d);
+  check(/^census diff: 1 changed, 1 new, 1 gone \(1 of them controls, marked !\), [1-9]\d* only moved/.test(d) && /button "Share" in header .*: height button 36px→40px/.test(d) && /new \(1\)\n  button "Delete".*fill #ff0000 OFF/.test(d)
+    && /gone \(1\)\n  ! button "Bold" \(selected\)/.test(d) && /values new on the page \(\d+\)\n  fill #ff0000 OFF/.test(d)
+    && /moved \(\d+, in \d+ groups?\)\n(.*\n)*  in header, \d+ moved \d+px right/.test(d), "a diff: what changed, came and went (a control that went marked !); moves grouped by where and how far") || console.log(d);
+  // a second read with a live value in it: census diff leaves out what changes on its own
+  const again = await p2.evaluate((r) => { document.querySelector("p").textContent = "changed by itself"; return window.census.data({ ...r, items: true }); }, rules);
+  const d2 = C.diffCensus({ ...before, again: { items: (await p2.evaluate((r) => { document.querySelector("p").textContent = "and again"; return window.census.data({ ...r, items: true }); }, rules)).items } }, again).join("\n");
+  check(/; \d+ live \(they change on their own/.test(d2) && !/changed by itself|and again/.test(d2.split("values new")[0]), "a diff leaves out what differs between a capture and its own second read") || console.log(d2);
   await b.close();
   const has = (re, what) => check(re.test(text), `${what}${re.test(text) ? "" : `\n${text}`}`);
   has(/^fill .*\n(.*\n)*\s+surface-2 ×\d/m, "fills by token name");
