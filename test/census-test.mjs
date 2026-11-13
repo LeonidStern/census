@@ -34,24 +34,6 @@ check(both[0] === `${head}; pages: a, b` && both[1] === "fill (4 values)" && bot
 check(both[6] === "  Button size=xs IN 2 LOOKS (all): h34 r6 fill surface-2 text white-100 ×2 ([a] button 1,2 3x4) | h32 r6 fill surface-2 text white-100 ×1 ([b] button 1,2 3x4) ; selected: h34 r6 fill white-5 text white-100 ×1 ([a] button 1,2 3x4)",
   "merged, one part in two heights is two looks");
 const white = C.parseColor("rgb(255, 255, 255)"), black = C.parseColor("rgba(0, 0, 0, 1)");
-{
-  // census lint: a place that needs a fix at its file and line; a part's usual look isn't one
-  const at = (w, f) => `${w} @ ${f}`;
-  const lk = (shape, fill, n, where) => ({ state: "", shape, skin: `${shape} fill ${fill}`, say: `${shape} fill ${fill}`, n, at: [where] });
-  const page = (h) => ({ head, groups: [
-    { name: "fill", rows: [{ key: "surface-1", n: 9, at: ["div 0,0 9x9"] }, { key: "#123456", n: 1, note: " OFF (nearest surface-2)", at: [at("span 1,1 2x2", "src/Card.tsx:12")] }] },
-    { name: "set where used", what: "", rows: [{ key: "Button size=xs: height 32px", n: 1, at: [at('button "Go" 1,1 9x9', "src/Bar.tsx:7")] }] },
-    { name: "parts", what: "", rows: [{ key: "Button size=xs", n: 4, at: [], flag: true, looks: [lk("h34 r6", "surface-2", 3, at('button "Save" 1,1 9x9', "src/Form.tsx:3")), lk(h, "surface-2", 1, at('button "Go" 1,1 9x9', "src/Bar.tsx:7"))] }] },
-    { name: "layout problems", what: "", rows: [{ key: 'cut-text button "Long" 1,1 9x9 needs 90x9', n: 0, at: [] }] }] });
-  const found = C.lintFindings({ home: page("h32 r6"), cart: page("h32 r6") });
-  const lines = C.lintLines(found);
-  check(lines.length === 4 && lines[0] === "src/Bar.tsx:7: warning: set where used: Button size=xs: height 32px [census/set-where-used] (home, cart)"
-    && lines[1] === "src/Bar.tsx:7: warning: Button size=xs in two looks: this one h32 r6 fill surface-2; elsewhere h34 r6 fill surface-2 [census/two-looks] (home, cart)"
-    && lines[2] === "src/Card.tsx:12: warning: fill #123456 OFF (nearest surface-2) [census/off-system] (home, cart)"
-    && lines[3] === 'warning: cut-text button "Long" 1,1 9x9 needs 90x9 [census/layout] (home, cart)', "census lint: one line a place and rule, pages joined, the usual look left alone") || console.log(lines.join("\n"));
-  const gh = C.lintLines(found, "github");
-  check(gh[2] === "::warning file=src/Card.tsx,line=12,title=census/off-system::fill #123456 OFF (nearest surface-2) (home, cart)" && gh[3].startsWith("::warning title=census/layout::"), "census lint as GitHub annotations") || console.log(gh.join("\n"));
-}
 check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor("#ff000080")) === "[255,0,0,0.5019607843137255]" && JSON.stringify(C.parseColor("color(srgb 1 0 0 / 0.5)")) === "[255,0,0,0.5]", "colors read and compared");
 
 // ---------- Source maps ----------

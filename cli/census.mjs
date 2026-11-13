@@ -41,12 +41,6 @@ census diff [--live <before2/census.json>] <before/census.json> <after/census.js
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
 
-census lint [--format text|github] [--max-warnings <n>] <census.json>
-  The places that need a fix as lint findings, at the file and line where the part was used (capture with
-  --sources): values off the system or next to another, a use site that changes a part's look, a part in two
-  looks, a control no design-system part drew, layout problems. One line each: "file:line: warning: ...".
-  --format github writes GitHub annotations, shown on the pull request. --max-warnings: exit 1 above n.
-
 census prompt [options] <census.txt>...
   --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
   --app <words>       what the app is ("a recipe site", "the checkout of a shop")
@@ -193,17 +187,6 @@ async function diff() {
   console.log(out.join("\n").trim());
 }
 
-async function lint() {
-  const { lintFindings, lintLines } = await import(join(here, "../dist/census.mjs"));
-  const pages = JSON.parse(readFileSync(rest[0], "utf8"));
-  const found = lintFindings(pages);
-  const lines = lintLines(found, opt.format === "github" ? "github" : "text");
-  if (lines.length) console.log(lines.join("\n"));
-  const placed = found.filter((f) => f.file).length;
-  console.error(`census lint: ${found.length} findings (${placed} with a file and line)`);
-  if (opt["max-warnings"] !== undefined && found.length > Number(opt["max-warnings"])) process.exitCode = 1;
-}
-
 function prompt() {
   const files = rest.map((f) => [f.replace(/^.*\//, "").replace(/\.txt$/, ""), readFileSync(f, "utf8").trim()]);
   const merged = files.length === 1 && /; pages: /.test(files[0][1].split("\n")[0]);
@@ -222,5 +205,4 @@ function prompt() {
 if (cmd === "capture" && rest.length) await capture();
 else if (cmd === "prompt" && rest.length) console.log(prompt());
 else if (cmd === "diff" && rest.length === 2) await diff();
-else if (cmd === "lint" && rest.length === 1) await lint();
 else { console.log(USAGE); process.exit(cmd ? 1 : 0); }

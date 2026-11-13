@@ -32,9 +32,6 @@ npx census capture --rules rules.json --sources --out out home=http://localhost:
 # what changed between two captures
 npx census diff before/census.json after/census.json
 
-# places to fix, as file:line: warning
-npx census lint out/census.json
-
 # a prompt for a model with no tools
 npx census prompt --docs ds-rules.md out/all.txt > prompt.txt
 ```

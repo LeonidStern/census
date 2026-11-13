@@ -674,7 +674,7 @@ export function censusLines(c: Census): string[] {
   return out;
 }
 /** How many looks a part shows: the most skins inside one state, or the shapes (height and corner) across all states: a state changes colors, not size. */
-export const looksOf = (r: CensusRow): number => {
+const looksOf = (r: CensusRow): number => {
   if (!r.flag || !r.looks) return 1;
   const skins = new Map<string, Set<string>>();
   for (const l of r.looks) skins.set(l.state, (skins.get(l.state) ?? new Set<string>()).add(l.skin));

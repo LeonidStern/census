@@ -3,7 +3,7 @@
 //   import { census, lines, save } from "census/playwright";
 //   const home = await census(page, { rules, sources: true });
 //   console.log(lines(home));
-//   save("census-out", { home });   // home.txt and census.json, for census diff and census lint
+//   save("census-out", { home });   // home.txt and census.json, for census diff
 //
 // Playwright isn't a dependency: you pass your own page. Forced hover, pressed and focus colors need Chromium (they
 // go through Chrome's DevTools Protocol); in Firefox and WebKit the census reads them from the CSS rules.
