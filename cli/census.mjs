@@ -6,7 +6,8 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openBrowser } from "./cdp.mjs";
-import { mapSources, sourceMapper } from "./sourcemap.mjs";
+import { mapSources } from "./sourcemap.mjs";
+import { forceStates, mapPlaces, pageMapper } from "./read.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const USAGE = `census capture [options] <url | name=url>...
@@ -40,6 +41,12 @@ census diff [--live <before2/census.json>] <before/census.json> <after/census.js
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
 
+census lint [--format text|github] [--max-warnings <n>] <census.json>
+  The places that need a fix as lint findings, at the file and line where the part was used (capture with
+  --sources): values off the system or next to another, a use site that changes a part's look, a part in two
+  looks, a control no design-system part drew, layout problems. One line each: "file:line: warning: ...".
+  --format github writes GitHub annotations, shown on the pull request. --max-warnings: exit 1 above n.
+
 census prompt [options] <census.txt>...
   --docs <file>       your design system's rules in words (colors, type, corners, shadows, parts)
   --app <words>       what the app is ("a recipe site", "the checkout of a shop")
@@ -66,22 +73,9 @@ async function capture() {
   const browser = await openBrowser({ connect: opt.connect, chrome: opt.chrome, width, height });
   const page = await browser.newPage();
   await page.init({ script: readFileSync(join(here, "../dist/census.js"), "utf8"), storage: opt.storage ? JSON.parse(readFileSync(opt.storage, "utf8")) : null, clock: opt.clock });
-  // source maps come only from the captured pages' own origins (a page's stack frames could name any address), at most 64 MB each;
-  // the page fetches them, so they come as the page sees them (its cookies, its cache)
+  // source maps come only from the captured pages' own origins (a page's stack frames could name any address)
   const origins = new Set(rest.map((x) => { try { return new URL(x.replace(/^[\w-]+=/, "")).origin; } catch { return ""; } }).filter((o) => /^https?:/.test(o)));
-  const map = sourceMapper(async (u) => {
-    let url;
-    try { url = new URL(u); } catch { return null; }
-    if (!origins.has(url.origin)) return null;
-    return page.evaluate(async (h) => {
-      try {
-        const r = await fetch(h, { redirect: "error", credentials: "same-origin" });
-        if (!r.ok || Number(r.headers.get("content-length") ?? 0) > 64e6) return null;
-        const t = await r.text();
-        return t.length > 64e6 ? null : t;
-      } catch { return null; }
-    }, url.href).catch(() => null);
-  }, opt.root ?? process.cwd());
+  const map = pageMapper(page, origins, opt.root ?? process.cwd());
   const say = async (lines) => { const t = lines.join("\n") + "\n"; return opt.sources ? mapSources(t, map) : t; };
   const pages = {};
   try {
@@ -95,7 +89,7 @@ async function capture() {
       await page.move(width - 10, height - 10);
       const settled = await page.settle(Number(opt.wait ?? 15000));
       const t = Date.now();
-      const n = await forceStates(page);
+      const n = opt.states === "rules" ? 0 : await forceStates(page);
       const data = await page.evaluate((r) => window.census.data(r), rules);
       const ms = Date.now() - t;
       // a second read, of the page loaded again: what differs changes on its own (a price, a clock, data made up per
@@ -106,7 +100,7 @@ async function capture() {
         if (opt.hide) await page.addStyle(`${opt.hide}{display:none!important}`);
         await page.move(width - 10, height - 10);
         await page.settle(Number(opt.wait ?? 15000));
-        await forceStates(page);
+        if (opt.states !== "rules") await forceStates(page);
         data.again = { items: (await page.evaluate((r) => window.census.data(r), rules)).items };
       }
       if (opt.tour) await tour(page, rules, data, width, height, url);
@@ -117,39 +111,10 @@ async function capture() {
     }
     if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
     // census.json gets the same file:line places as the text, for census diff
-    const mapAll = async (v) => typeof v === "string" ? (v.includes(" @ ") ? mapSources(v, map) : v)
-      : Array.isArray(v) ? Promise.all(v.map(mapAll))
-      : v && typeof v === "object" ? Object.fromEntries(await Promise.all(Object.entries(v).map(async ([k, x]) => [k, await mapAll(x)]))) : v;
-    writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapAll(pages) : pages));
+    writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapPlaces(pages, map) : pages));
   } finally {
     await page.close();
     await browser.close();
-  }
-}
-
-// Chrome forces each state on each control in view (hover and press on everything above it too, as a real pointer
-// would), with transitions off, and the census reads the control's colors in that state. Returns how many controls.
-const FORCE = { hover: ["hover"], pressed: ["hover", "active"], "pressed-attr": ["hover", "active"], focus: ["focus", "focus-visible"] };
-async function forceStates(page) {
-  if (opt.states === "rules") return 0;
-  await page.evaluate(() => { const s = document.createElement("style"); s.id = "census-still"; s.textContent = "*,*::before,*::after{transition:none!important;animation-play-state:paused!important}"; document.head.append(s); });
-  try {
-    const n = await page.evaluate(() => window.census.forceMark());
-    for (let i = 0; i < n; i++) {
-      const [el] = await page.nodes(`[data-census-f="${i}"]`);
-      if (!el) continue;
-      const up = await page.nodes(`[data-census-up~="${i}"]`);
-      for (const [state, classes] of Object.entries(FORCE)) {
-        await page.evaluate(([j, s]) => window.census.forceStep(j, s, true), [i, state]);
-        await page.force([el], classes);
-        if (state !== "focus") await page.force(up, classes.filter((c) => c !== "focus-visible"));
-        await page.evaluate(([j, s]) => window.census.forceStep(j, s, false), [i, state]);
-        await page.force(state === "focus" ? [el] : [el, ...up], []);
-      }
-    }
-    return n;
-  } finally {
-    await page.evaluate(() => { window.census.forceDone(); document.getElementById("census-still")?.remove(); });
   }
 }
 
@@ -228,6 +193,17 @@ async function diff() {
   console.log(out.join("\n").trim());
 }
 
+async function lint() {
+  const { lintFindings, lintLines } = await import(join(here, "../dist/census.mjs"));
+  const pages = JSON.parse(readFileSync(rest[0], "utf8"));
+  const found = lintFindings(pages);
+  const lines = lintLines(found, opt.format === "github" ? "github" : "text");
+  if (lines.length) console.log(lines.join("\n"));
+  const placed = found.filter((f) => f.file).length;
+  console.error(`census lint: ${found.length} findings (${placed} with a file and line)`);
+  if (opt["max-warnings"] !== undefined && found.length > Number(opt["max-warnings"])) process.exitCode = 1;
+}
+
 function prompt() {
   const files = rest.map((f) => [f.replace(/^.*\//, "").replace(/\.txt$/, ""), readFileSync(f, "utf8").trim()]);
   const merged = files.length === 1 && /; pages: /.test(files[0][1].split("\n")[0]);
@@ -246,4 +222,5 @@ function prompt() {
 if (cmd === "capture" && rest.length) await capture();
 else if (cmd === "prompt" && rest.length) console.log(prompt());
 else if (cmd === "diff" && rest.length === 2) await diff();
+else if (cmd === "lint" && rest.length === 1) await lint();
 else { console.log(USAGE); process.exit(cmd ? 1 : 0); }

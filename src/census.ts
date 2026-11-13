@@ -674,7 +674,7 @@ export function censusLines(c: Census): string[] {
   return out;
 }
 /** How many looks a part shows: the most skins inside one state, or the shapes (height and corner) across all states: a state changes colors, not size. */
-const looksOf = (r: CensusRow): number => {
+export const looksOf = (r: CensusRow): number => {
   if (!r.flag || !r.looks) return 1;
   const skins = new Map<string, Set<string>>();
   for (const l of r.looks) skins.set(l.state, (skins.get(l.state) ?? new Set<string>()).add(l.skin));
@@ -760,7 +760,7 @@ export function styleData(rules: StyleRules = {}, root: Element = document.body,
   host.style.display = "none";
   document.body.append(host);
   colorProbe(host);
-  try { return census(rules, root, cap, host); } finally { colorProbe(null); host.remove(); }
+  try { return census(rules, root, cap, host); } finally { colorProbe(null); host.remove(); forced = new WeakMap(); }
 }
 
 /** How many lines an element's words take. */
@@ -779,7 +779,8 @@ const NATIVE = "a[href],button,input,select,textarea";
 // Looks read with a state forced on by the capture (Chrome's DevTools Protocol forces :hover, :active and :focus-visible
 // on the control and, for hover and press, on everything above it): what the control really wears hovered, pressed or
 // focused, where the page's rules would only be a guess (a hover set on a parent, a variable, a JS-free group hover).
-const forced = new WeakMap<Element, Map<string, Record<string, string>>>();
+// what the capture's forcing read, kept for the next read only
+let forced = new WeakMap<Element, Map<string, Record<string, string>>>();
 // what a kit sets from its own handlers; [data-pressed] is a press in some kits and a toggle's "on" in others, so a press
 // is read both ways ("pressed" with :active alone, "pressed-attr" with [data-pressed] too) and the page's rules choose
 const FORCE_ATTR: Record<string, string> = { hover: "data-hovered", "pressed-attr": "data-pressed", focus: "data-focus-visible" };

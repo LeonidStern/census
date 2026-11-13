@@ -19,7 +19,8 @@
   "scripts": {
     "build": "esbuild src/browser.ts --bundle --format=iife --outfile=dist/census.js --log-level=warning && esbuild src/index.ts --bundle --format=esm --outfile=dist/census.mjs --log-level=warning && tsc -p .",
     "check": "tsc -p . --noEmit",
-    "test": "npm run build && node test/census-test.mjs"
+    "test": "npm run build && node test/census-test.mjs",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "esbuild": "0.25.12",
@@ -29,5 +30,13 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/census.mjs"
+    },
+    "./playwright": "./cli/playwright.mjs",
+    "./census.js": "./dist/census.js"
   }
 }
