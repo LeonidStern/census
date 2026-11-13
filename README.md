@@ -1,6 +1,10 @@
 # Census
 
-Census reads a live web page and writes its styles as text an AI can check. Each value gets your design system's name, and each place names the component that drew it and the file and line that placed it. It takes no screenshots.
+**Eyes for a blind agent.**
+
+An AI agent can't see a web page. Census reads the page in the browser and writes what's on screen as text: every color, size, corner and state, named by your design system, with the component that drew it and the file and line that placed it. The agent then checks the page as it checks code. It takes no screenshots.
+
+Use it to catch visual regressions in a PR, to check a page against your design system, or to give any browser agent a page it can read.
 
 ## Benchmarks
 
