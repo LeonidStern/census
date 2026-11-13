@@ -1,53 +1,31 @@
 # Benchmarks
 
-Blind tests: a model reads Census output, with no tools and no screenshots, and is scored against known problems. All runs used one production web app (React 19 and Next.js on Tailwind, dev build on mock data, 1440×900). One app and a few runs: take these as signs, not proof.
+The setup: one production web app (React 19, Next.js), dev build on mock data, 1440×900. Opus 5.5 read the output with no tools, 3 runs per arm. That's a small sample.
 
-## Visual regressions: `census diff` against screenshots
+## Visual regressions
 
-**Setup.** In the app's code we planted 8 regressions and made 2 intended changes:
+8 regressions were planted in the app's code: a hover color, a button height, cut-off text, a link color, a removed link, a corner, a font weight and a dimmer hint.
 
-| Plant | What changed |
-|---|---|
-| R1 | Hover wash on every button, one token step stronger |
-| R2 | One button size 2 px taller |
-| R3 | A search placeholder made longer, now cut off |
-| R4 | One footer link one step brighter, by a class at its use site |
-| R5 | A footer link removed |
-| R6 | A toast's corner off the radius scale |
-| R7 | One label's weight 400 → 600 |
-| R8 | A key hint one step dimmer |
+| | Census diff | Screenshots + pixel diff | Linter (oxlint) |
+|---|---|---|---|
+| Found | **100%** (24 of 24) | 63% (15 of 24) | 25% (2 of 8) |
+| False claims per read | 0 | 1 | 0 |
+| AI read time | **16 s** | 35 s | none |
+| AI cost per read | **~$0.03** | ~$0.07 | none |
+| Capture per page, before and after | 60 s, 15 s CPU | 50 s, 5 s CPU | none |
 
-The intended changes were renaming a link and widening a gap. Each reader got the change's description, which named only those two. There were two pages, and 3 runs per arm.
+## Design-system check
 
-- **Census arm:** the text of `census diff --live`, 8.8 KB.
-- **Screenshot arm:** 8 images: before, a second "before" to show live data, after, and a pixel diff with changed pixels in red, for each page.
+The task was to find known design-system problems on three pages.
 
-**Results** (Opus 5.5):
-
-| | Census diff | Screenshots + pixel diff |
+| | Census | Screenshots |
 |---|---|---|
-| Found, of 8 | 8, 8, 8 | 5, 5, 5 |
-| False claims | 0, 0, 0 | 1, 1, 1 |
-| Missed | none | R1 hover, R4 and R8 one-step colors |
-| Read time | 15–18 s | 34–38 s |
-| Input | ~3.5k tokens | ~14k tokens (8 images) |
-| Cost a read | ~$0.03 | ~$0.07 |
+| Found | **67%** (6 of 9) | 13% (1 of 8) |
+| AI cost per read | ~$0.21 | ~$0.21 |
 
-Costs are estimates from the input and output sizes at $4 per million input tokens and $20 per million output tokens. A hover color never shows in a still image, and a one-step text color is a few faint red pixels in a pixel diff. The diff names both. In these runs the diff confirmed the rename but not the wider gap, because it only counted moves then.
+## Notes
 
-After moves were grouped and removed controls marked `!`, two more runs found 8 of 8 again, with 0 false claims. Both confirmed the gap. Read time was 25–38 s.
-
-**Against a linter.** The app's own oxlint rules (design-system rules included) flagged 2 of the 8: the corner off the scale and the font weight. The other six use valid classes: one valid token swapped for another, a size change inside the design system, a removal, cut text. Only a before/after read shows those.
-
-## Design-system check: a census against screenshots
-
-On three pages of the app, Opus reading the census alone found 6 of 9 known design-system problems. A read took about 35 s and cost about $0.21 (a 25 KB census). In an earlier round, screenshots of the same pages found 1 of 8.
-
-## Capture speed
-
-Times on the same app, from a dev server:
-
-- **Page load:** the capture waits until no request is loading and the controls hold still for 0.6 s. That took about 7 s per load. A first load that also compiles the page took about 60 s.
-- **Read:** 1–6 s. Most of it is forcing hover, pressed and focus on each control in view: about 6 s for 67 controls. `--states rules` skips forcing.
-- **Two loads:** each page loads twice by default so `diff` can leave live data out. `--once` halves the time.
-- **Playwright helper:** about 13 s for the same read with forced states. Every step goes through Playwright's protocol session.
+- AI cost is estimated from tokens at $4 per million in and $20 per million out.
+- CPU covers the capture and its browser, not the app's server.
+- Census capture loads each page twice so the diff can leave live data out; `--once` halves its time.
+- Most of the census's CPU time goes to forcing hover, pressed and focus on every control. `--states rules` skips that.

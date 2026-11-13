@@ -90,4 +90,4 @@ Every field is optional. `type` is size/weight/line-height in px.
 - Census only reads the page. `--connect` gives it your signed-in browser, and `--tour` clicks, so use both only on pages you trust.
 - Source maps are fetched only from the captured page's own origin.
 
-[BENCHMARKS.md](BENCHMARKS.md): `census diff` found 8 of 8 planted regressions, where screenshots found 5, at about half the time and cost. `npm test` runs the tests. [AGENTS.md](AGENTS.md) covers working on the code. MIT licence.
+[BENCHMARKS.md](BENCHMARKS.md): census diff found 100% of planted regressions, screenshots 63%, at half the AI time and cost. `npm test` runs the tests. [AGENTS.md](AGENTS.md) covers working on the code. MIT licence.
