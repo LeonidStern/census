@@ -2,7 +2,8 @@
 // census capture: open pages in Chrome (through the DevTools Protocol, no other dependency), take each page's census, write it as text.
 // census diff: what changed between two captures.
 // Run with no arguments for the usage.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openBrowser } from "./cdp.mjs";
@@ -34,12 +35,27 @@ const USAGE = `census capture [options] <url | name=url>...
                       that matter (set where used, values off the system, a part in two looks). Needs a dev
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
+  --extends <preset>  turn on the accessibility checks and observations (recommended@1); rules.json can say it too
+  --fail-on <levels>  exit 1 when a finding not accepted is at these levels: rules, accessibility (comma-separated;
+                      unsure accessibility findings never fail). Without it a capture exits 0 whatever it finds
 
 census diff [--live <before2/census.json>] <before/census.json> <after/census.json>
   What changed between two captures of the same pages, page by page: elements whose look changed (before→after),
   elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
+  Then findings: rule breaks and accessibility new and fixed, observations only new.
+  --fail-on new-rules,new-accessibility: exit 1 when the after capture has findings at those levels that the
+  before capture didn't (what CI wants: a PR is judged only on what it added)
+
+census init [capture options] [--tokens <file>] [--out <file>] [--force] <url | name=url>...
+census init --from <census.json> [--tokens <file>] [--out <file>] [--force]
+  A first rules.json (default rules.draft.json) from the tokens the pages declare (custom properties on :root and
+  theme scopes, or a tokens file: W3C design tokens or a flat map). What the screen shows that no token declares goes
+  under "observed": still off the system until you move it into the scale. Prints what to review. Won't overwrite
+  without --force.
+
+Exit codes: 0 done, 1 findings at a --fail-on level, 2 usage or a capture that failed.
 `;
 
 const args = process.argv.slice(2);
@@ -47,13 +63,17 @@ const cmd = args.shift();
 const opt = {}, rest = [];
 for (let i = 0; i < args.length; i++) {
   const a = args[i];
-  if (a === "--tour" || a === "--closed" || a === "--sources" || a === "--once") opt[a.slice(2)] = true;
+  if (a === "--tour" || a === "--closed" || a === "--sources" || a === "--once" || a === "--force") opt[a.slice(2)] = true;
   else if (a.startsWith("--")) opt[a.slice(2)] = args[++i];
   else rest.push(a);
 }
 
 async function capture() {
+  const C = await import(join(here, "../dist/census.mjs"));
   const rules = opt.rules ? JSON.parse(readFileSync(opt.rules, "utf8")) : {};
+  if (opt.extends) rules.extends = opt.extends;
+  if (rules.extends && !C.PRESETS.includes(rules.extends)) throw new Usage(`unknown preset ${rules.extends} (known: ${C.PRESETS.join(", ")})`);
+  for (const e of rules.accept ?? []) if (!e.why?.trim()) console.log(`accept entry without "why" left out: ${JSON.stringify(e)}`);
   if (opt.closed) rules.closed = true;
   if (opt.sources) rules.sources = true;
   rules.items = true; // census.json keeps each element's look, for census diff
@@ -67,7 +87,7 @@ async function capture() {
   const origins = new Set(rest.map((x) => { try { return new URL(x.replace(/^[\w-]+=/, "")).origin; } catch { return ""; } }).filter((o) => /^https?:/.test(o)));
   const map = pageMapper(page, origins, opt.root ?? process.cwd());
   const say = async (lines) => { const t = lines.join("\n") + "\n"; return opt.sources ? mapSources(t, map) : t; };
-  const pages = {};
+  const pages = {}, unused = new Map();
   try {
     for (const [i, spec] of rest.entries()) {
       const m = spec.match(/^([\w-]+)=(.+)$/);
@@ -95,18 +115,39 @@ async function capture() {
       }
       if (opt.tour) await tour(page, rules, data, width, height, url);
       pages[name] = data;
-      writeFileSync(join(out, `${name}.txt`), await say(await page.evaluate((d) => window.census.lines(d), data)));
+      // the team's accepted findings, with this page's name (an entry can be for one page)
+      if (data.findings) unused.set(name, C.acceptFindings(data, rules.accept, name).unused);
+      writeFileSync(join(out, `${name}.txt`), await say(C.censusLines(data)));
       const live = data.again ? (await import("../dist/census.mjs")).changesOnItsOwn(data.items, data.again.items).filter((x) => data.items.includes(x)).length : 0;
       console.log(`${name} ${url}: ${settled === null ? `didn't settle in ${opt.wait ?? 15000} ms (requests still loading or the page still moving)` : `loaded and settled in ${t - t0} ms`}; read in ${ms} ms (${n} controls hovered, pressed and focused)${data.again ? `; ${live} elements change on their own` : ""}`);
     }
-    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
+    // an accept entry that matched nothing on any page it could apply to: said only where every such page was captured
+    const names = Object.keys(pages), stale = (rules.accept ?? []).filter((e) => e.why?.trim() && (e.page ? names.includes(e.page) : names.length > 1)
+      && [...unused].filter(([p]) => !e.page || p === e.page).every(([, list]) => list.includes(e)));
+    const staleLines = stale.map((e) => `  stale accept: ${JSON.stringify(e)} matched nothing on ${e.page ?? "these pages"}`);
+    if (staleLines.length) console.log(staleLines.join("\n"));
+    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say([...C.censusLines(C.mergeCensus(pages)), ...staleLines].join("\n").split("\n")));
+    else if (staleLines.length) writeFileSync(join(out, `${names[0]}.txt`), `${readFileSync(join(out, `${names[0]}.txt`), "utf8")}${staleLines.join("\n")}\n`);
     // census.json gets the same file:line places as the text, for census diff
     writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapPlaces(pages, map) : pages));
   } finally {
     await page.close();
     await browser.close();
   }
+  if (opt["fail-on"]) {
+    const levels = failLevels(opt["fail-on"], ["rules", "accessibility"]);
+    const bad = Object.values(pages).flatMap((d) => d.findings ?? []).filter((f) => !f.accepted && ((f.level === "rule" && levels.has("rules")) || (f.level === "accessibility" && !f.unsure && levels.has("accessibility"))));
+    if (bad.length) { console.log(`${bad.length} findings at --fail-on ${opt["fail-on"]}`); process.exitCode = 1; }
+  }
+  return pages;
 }
+
+class Usage extends Error {}
+const failLevels = (v, known) => {
+  const s = new Set(String(v).split(",").map((x) => x.trim()).filter(Boolean));
+  for (const x of s) if (!known.includes(x)) throw new Usage(`--fail-on ${x}: expected ${known.join(", ")}`);
+  return s;
+};
 
 const LAYER = "[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[role=tooltip]";
 // of a pop-up's own census: its layer, parts, states and use-site changes, and any value off the system
@@ -171,7 +212,9 @@ async function tour(page, rules, data, width, height, url) {
 }
 
 async function diff() {
-  const { diffCensus } = await import(join(here, "../dist/census.mjs"));
+  const { diffCensus, diffFindings } = await import(join(here, "../dist/census.mjs"));
+  const levels = opt["fail-on"] ? failLevels(opt["fail-on"], ["new-rules", "new-accessibility"]) : new Set();
+  let failing = 0;
   const [a, b] = rest.map((f) => JSON.parse(readFileSync(f, "utf8")));
   const live = opt.live ? JSON.parse(readFileSync(opt.live, "utf8")) : null;
   const names = [...new Set([...Object.keys(a), ...Object.keys(b)])];
@@ -179,11 +222,40 @@ async function diff() {
   for (const n of names) {
     if (!a[n] || !b[n]) { out.push(`${n}: only in the ${a[n] ? "before" : "after"} capture`, ""); continue; }
     out.push(`<${n}>`, ...diffCensus(a[n], b[n], 40, live?.[n]), `</${n}>`, "");
+    const d = diffFindings(a[n], b[n]);
+    if (levels.has("new-rules")) failing += d.newRules.length;
+    if (levels.has("new-accessibility")) failing += d.newAccessibility.filter((f) => !f.unsure).length;
   }
   console.log(out.join("\n").trim());
+  if (failing) { console.log(`${failing} new findings at --fail-on ${opt["fail-on"]}`); process.exitCode = 1; }
+}
+
+async function init() {
+  const { draftRules, flattenTokens } = await import(join(here, "../dist/census.mjs"));
+  const file = opt.out ?? "rules.draft.json";
+  if (existsSync(file) && !opt.force) throw new Usage(`${file} exists: pass --force to replace it`);
+  let pages;
+  if (opt.from) pages = JSON.parse(readFileSync(opt.from, "utf8"));
+  else {
+    // a capture of its own, once per page, into a folder of its own; the draft goes where --out says
+    opt.out = mkdtempSync(join(tmpdir(), "census-init-"));
+    opt.once = true;
+    delete opt.rules;
+    pages = await capture();
+  }
+  const extra = opt.tokens ? flattenTokens(JSON.parse(readFileSync(opt.tokens, "utf8"))) : [];
+  const { rules, report } = draftRules(pages, extra);
+  writeFileSync(file, `${JSON.stringify(rules, null, 2)}\n`);
+  console.log([`wrote ${file}`, ...report].join("\n"));
 }
 
 // run last: the functions above use constants defined after them
-if (cmd === "capture" && rest.length) await capture();
-else if (cmd === "diff" && rest.length === 2) await diff();
-else { console.log(USAGE); process.exit(cmd ? 1 : 0); }
+try {
+  if (cmd === "capture" && rest.length) await capture();
+  else if (cmd === "diff" && rest.length === 2) await diff();
+  else if (cmd === "init" && (rest.length || opt.from)) await init();
+  else { console.log(USAGE); process.exit(cmd ? 2 : 0); }
+} catch (e) {
+  console.error(e instanceof Usage ? `census: ${e.message}` : e);
+  process.exit(2);
+}

@@ -10,6 +10,7 @@
 // mark anything else with data-census-private. Mark a control that is dim on purpose with data-census-dim.
 
 import { colorProbe, contrast, over, parseColor } from "./color";
+import { acceptFindings, asksChecks, checkSetting, findingLines, mergeFindings, type AcceptEntry, type CheckSetting, type Finding, type Level } from "./findings";
 
 const POPUP = "[role=menu],[role=listbox],[role=dialog],[role=alertdialog]";
 const PRESSABLE = "button,a[href],[role=button],[role=tab],[role=option],[role=menuitem],[role=switch],[role=checkbox],[role=radio],[role=treeitem],[role=row],[data-item],[data-section]";
@@ -236,6 +237,7 @@ function looking() {
   };
   return {
     opacity,
+    back,
     /** The contrast of `color` drawn at `alpha` in el, against what's behind el. */
     ratio(el: Element, color: string, alpha: number): number | null {
       const fg = parseColor(color);
@@ -284,9 +286,19 @@ function cross(a: DOMRect, b: DOMRect): DOMRect | null {
  * `closed`: also what pop-ups not opened yet would look like (React only).
  * `sources`: " @ file:line" where a place's part was used, on the places that
  * need a fix (set where used, off the system, a part in two looks).
- * `items`: also each element's own look (Census.items), for diffCensus.
+ * `items`: also each element's own look (Census.items), for diffCensus, and the custom properties the page declares
+ * (Census.tokens), for census init.
+ * `extends`: "recommended@1" turns on the accessibility checks and the observations (findings.ts CHECKS); `checks`
+ * sets one check's level and number ("off", "rule", "advice", a number, or [level, number]). `system`: the team's own
+ * rules about what the screen shows: `textColors` (the tokens text may use), `legacyParts` (parts that should no longer
+ * render), `pairs` ([fill token, text token] pairs a fill may carry). `accept`: findings the team keeps, each with a why.
  */
-export type StyleRules = { colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean; items?: boolean };
+export type StyleRules = {
+  colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean; items?: boolean;
+  extends?: string; checks?: Record<string, CheckSetting>; system?: { textColors?: string[]; legacyParts?: string[]; pairs?: [string, string][] }; accept?: AcceptEntry[];
+};
+/** A custom property the page declares on its root or a theme scope, and whether any rule uses it. */
+export type DeclaredToken = { name: string; raw: string; value: string; used: boolean; /** its value as a color (#rrggbb[aa]), when it is one */ color?: string };
 
 /** The census as data: groups of counted values with a few places each. censusLines writes it out; mergeCensus joins pages. */
 export type CensusLook = { state: string; shape: string; skin: string; say: string; n: number; at: string[]; lo?: number; hi?: number };
@@ -294,7 +306,7 @@ export type CensusRow = { key: string; n: number; note?: string; at: string[]; l
 export type CensusGroup = { name: string; what?: string; rows: CensusRow[]; more?: number };
 /** One element's look, for a diff between two captures (rules.items): `id` names it with its words, `loose` without them. */
 export type CensusItem = { id: string; loose: string; at: string; box: [number, number, number, number]; look: Record<string, string> };
-export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[]; /** a second read a moment later, by the capture */ again?: { items?: CensusItem[] } };
+export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[]; /** a second read a moment later, by the capture */ again?: { items?: CensusItem[] }; findings?: Finding[]; /** set when no preset or check was asked for: a line saying observations exist */ hint?: string; tokens?: DeclaredToken[] };
 
 type RGBA = [number, number, number, number];
 const hex = (c: RGBA) => `#${c.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}${c[3] < 0.995 ? Math.round(c[3] * 255).toString(16).padStart(2, "0") : ""}`;
@@ -671,6 +683,8 @@ export function censusLines(c: Census): string[] {
     for (const r of g.rows) out.push(`  ${rowText(r)}`);
     if (g.more) out.push(`  ... ${g.more} more`);
   }
+  out.push(...findingLines(c));
+  if (c.hint) out.push(c.hint);
   return out;
 }
 /** How many looks a part shows: the most skins inside one state, or the shapes (height and corner) across all states: a state changes colors, not size. */
@@ -725,7 +739,8 @@ export function mergeCensus(pages: Record<string, Census>): Census {
     for (let i = 0; i < 3; i++) for (const p of a.pages) { const x = a.at.get(p)?.[i]; if (x && a.row.at.length < 3 && !said.has(x)) { said.add(x); a.row.at.push(`[${p}] ${x}`); } }
   }
   for (const g of groups) if (g.name !== "layout problems") g.rows.sort((a, b) => looksOf(b) - looksOf(a) || b.n - a.n);
-  return { head: `${pages[names[0]]?.head ?? "styles on screen"}; pages: ${names.join(", ")}`, groups: groups.map((g) => ({ ...g, more: g.more || undefined })) };
+  const findings = mergeFindings(pages), hint = names.map((p) => pages[p].hint).find(Boolean);
+  return { head: `${pages[names[0]]?.head ?? "styles on screen"}; pages: ${names.join(", ")}`, groups: groups.map((g) => ({ ...g, more: g.more || undefined })), ...(findings ? { findings } : {}), ...(hint ? { hint } : {}) };
 }
 /** How many rows each group may show when they don't all fit: small groups whole, the rest an even share. */
 const shares = (sizes: number[], budget: number): number[] => {
@@ -760,7 +775,11 @@ export function styleData(rules: StyleRules = {}, root: Element = document.body,
   host.style.display = "none";
   document.body.append(host);
   colorProbe(host);
-  try { return census(rules, root, cap, host); } finally { colorProbe(null); host.remove(); forced = new WeakMap(); }
+  try {
+    const c = census(rules, root, cap, host);
+    if (c.findings) acceptFindings(c, rules.accept);
+    return c;
+  } finally { colorProbe(null); host.remove(); forced = new WeakMap(); rings = new WeakMap(); }
 }
 
 /** How many lines an element's words take. */
@@ -789,6 +808,13 @@ const lookNow = (el: Element) => {
   for (const p of ["before", "after"]) { const ps = getComputedStyle(el, `::${p}`); if (!/^(none|normal)$/.test(ps.content)) o[`overlay ${p}`] = ps.backgroundColor; }
   return o;
 };
+// what a control draws focused beyond its colors: an outline, a ring of shadow, an underline, its border. Read at rest
+// and forced focused, for the focus-visible check (a default ring is an outline: it counts)
+let rings = new WeakMap<Map<string, Record<string, string>>, { rest?: string; focus?: string }>();
+const ringNow = (el: Element) => {
+  const cs = getComputedStyle(el);
+  return [cs.outlineStyle !== "none" && parseFloat(cs.outlineWidth) > 0 ? `outline ${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineColor} ${cs.outlineOffset}` : "", cs.boxShadow !== "none" ? `shadow ${cs.boxShadow}` : "", `decoration ${cs.textDecorationLine}`, `border ${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`].join("|");
+};
 // what a control's hover, press and focus colors can depend on: its tag, attributes, place among its siblings, resting
 // look and the classes above it. Controls that share all of it wear the same states, so one of them is forced for all.
 const SKIP_ATTR = /^(id|href|src|alt|title|value|name|placeholder|for|tabindex|aria-(label|labelledby|describedby|controls|owns|activedescendant|posinset|setsize|valuenow|valuetext)|data-census-.*|data-(key|id|index|testid|test-id|value|row-index|item-index))$/;
@@ -812,6 +838,7 @@ export function forceMark(): number {
     const rest = lookNow(el), key = stateKey(el, rest), like = seen.get(key);
     if (like) { forced.set(el, like); continue; }
     const readings = new Map([["rest", rest]]);
+    rings.set(readings, { rest: ringNow(el) });
     seen.set(key, readings);
     forced.set(el, readings);
     el.setAttribute("data-census-f", String(i));
@@ -832,6 +859,7 @@ export function forceRead(i: number, read: string | null, next: string | null): 
   const clear = () => { const a = el.getAttribute("data-census-set"); if (a) { el.removeAttribute(a); el.removeAttribute("data-census-set"); } };
   if (read) {
     map?.set(read, lookNow(el));
+    if (read === "focus" && map) { const r = rings.get(map); if (r) r.focus = ringNow(el); }
     clear();
     if (read === "pressed") { set("pressed-attr"); map?.set("pressed-attr", lookNow(el)); clear(); }
   }
@@ -997,6 +1025,57 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     sizing.set(el, v);
     return v;
   };
+  // the checks asked for (findings.ts CHECKS), and what they find, kept raw (hex, px) until the tokens are known
+  const want = (check: string) => checkSetting(rules, check);
+  const W = { contrast: want("contrast"), small: want("small-text"), light: want("light-text"), legacy: want("legacy"), pair: want("pair") };
+  type Hit = { n: number; at: string[]; el: Element; r: DOMRect; unsure?: boolean; min?: number; big?: boolean; fg?: string; bg?: string; what?: string; names?: string[] };
+  const hits = new Map<string, Hit>();
+  const hit = (id: string, el: Element, r: DOMRect, more: Partial<Hit> = {}) => {
+    let h = hits.get(id);
+    if (!h) hits.set(id, (h = { n: 0, at: [], el, r, ...more }));
+    h.n++;
+    if (h.at.length < 3) h.at.push(place(el, r));
+    // which elements: so diff can say a finding now also covers another one
+    const nm = nameOf(el);
+    if ((h.names ??= []).length < 20 && !h.names.includes(nm)) h.names.push(nm);
+    if (more.min !== undefined) h.min = Math.min(h.min ?? 99, more.min);
+    if (more.unsure === false) h.unsure = false;
+    return h;
+  };
+  const legacy = new Set(rules.system?.legacyParts ?? []);
+  // words whose color the census can't judge from computed styles: painted by a background, blended, filtered, shadowed,
+  // over an image or a gradient, or under something that isn't their ancestor
+  const unsureText = (el: Element, cs: CSSStyleDeclaration, r: DOMRect) => {
+    if (cs.backgroundClip === "text" || cs.getPropertyValue("-webkit-background-clip") === "text" || (cs.getPropertyValue("-webkit-text-fill-color") && colorOf(cs.getPropertyValue("-webkit-text-fill-color")) !== colorOf(cs.color))
+      || cs.mixBlendMode !== "normal" || cs.filter !== "none" || cs.textShadow !== "none") return true;
+    for (let e: Element | null = el; e; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      if (s.backgroundImage !== "none" || (s.backdropFilter && s.backdropFilter !== "none")) return true;
+      const c = parseColor(s.backgroundColor);
+      if (c && c[3] >= 0.995) break;
+    }
+    for (const c of document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2)) {
+      if (c === el || c.contains(el) || el.contains(c)) return false;
+      const s = getComputedStyle(c), bgc = parseColor(s.backgroundColor);
+      if ((bgc && bgc[3] > 0.02) || s.backgroundImage !== "none" || /^(IMG|VIDEO|CANVAS)$/.test(c.tagName)) return true;
+    }
+    return false;
+  };
+  const turnedOff = (el: Element) => !!el.closest(`${OFF},fieldset[disabled],[data-disabled]`) || (el as HTMLButtonElement).disabled === true;
+  const contrastOf = (el: Element, color: string, cs: CSSStyleDeclaration, r: DOMRect, what: string) => {
+    const ratio = seeing.ratio(el, color, seeing.opacity(el));
+    if (ratio === null) return;
+    const size = parseFloat(cs.fontSize), weight = parseFloat(cs.fontWeight) || 400;
+    const large = size >= 24 || (size >= 18.66 && weight >= 700), team = W.contrast.n;
+    const floor = team !== undefined ? (large ? Math.min(3, team) : team) : large ? 3 : 4.5;
+    // compared unrounded: 4.499:1 fails
+    if (ratio >= floor) return;
+    const fg = colorOf(color) ?? color, bg = hex(seeing.back(el)), id = `contrast|${what}${fg} on ${bg}|${large ? "large" : ""}`;
+    // whether it is unsure is asked of the first few only (a hit test each): one sure place makes the finding sure
+    const had = hits.get(id);
+    hit(id, el, r, { min: ratio, big: large, fg, bg, what, ...(had && (had.n >= 3 || !had.unsure) ? {} : { unsure: unsureText(el, cs, r) }) });
+  };
+  const pairs = new Map<string, number>(), partHeights = new Map<string, Map<number, { n: number; at: string }>>();
   const placeholders = new Map<string, number>(), icons = new Map<Element, Set<string>>(), tracking = new Map<number, Map<number, Seen>>();
   let moving = 0, hot = 0, warm: Element | null = null;
   const controls: { el: Element; r: DOMRect }[] = [];
@@ -1042,6 +1121,18 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       tracking.set(px(cs.fontSize), per);
       const had = per.get(ls);
       if (had) had.n++; else per.set(ls, { n: 1, at: [place(el, r)], el });
+      const size = parseFloat(cs.fontSize), weight = parseFloat(cs.fontWeight) || 400;
+      if (W.contrast.level && !warm && !turnedOff(el) && !el.closest("svg,[role=img]")) contrastOf(el, cs.color, cs, r, "");
+      // Apple's minimums: 10 pt on macOS, 11 pt on iOS (a CSS px is drawn at 1 pt)
+      const floor = W.small.n ?? (innerWidth >= 768 ? 10 : 11);
+      if (W.small.level && size < floor) hit(`small-text|${px(cs.fontSize)}`, el, r);
+      if (W.light.level && weight < 400 && size < 14) hit(`light-text|${px(cs.fontSize)}/${cs.fontWeight}`, el, r);
+      if (W.pair.level && rules.system?.pairs?.length && t && !warm && !turnedOff(el)) { const k = `${hex(seeing.back(el))} ${t}`; pairs.set(k, (pairs.get(k) ?? 0) + 1); if (!hits.has(`pairat|${k}`)) hit(`pairat|${k}`, el, r); }
+    }
+    // a field's hint is text too (WCAG 1.4.3 covers it)
+    if (W.contrast.level && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) && el.placeholder && !el.value && !turnedOff(el)) {
+      const ps = getComputedStyle(el, "::placeholder");
+      contrastOf(el, ps.color, ps, r, "placeholder ");
     }
     const big = r.width >= 4 && r.height >= 4;
     // a color on its way somewhere (a flash, a fade) is not a value of the page
@@ -1072,6 +1163,8 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       if (!inner) add(groups.layer, `${role ?? "layer"} corner ${sayCorner(lc)} fill ${lb ?? "none"}${ll ? ` line ${ll}` : ""} shadow ${ls?.rest.length ? ls.rest.join(", ") : "none"}`, el, r);
     }
     const p = part(el);
+    // a legacy part on screen, counted once at its outermost element
+    if (p && legacy.size && W.legacy.level) { const name = p.key.split(" ")[0]; if (legacy.has(name) && part(el.parentElement ?? el)?.key.split(" ")[0] !== name) hit(`legacy|${name}`, el, r); }
     let boxR = r, hug = false;
     if (ctl) {
       // a text field with no box of its own sits in one: the nearest filled or lined wrapper, when it is about the field's size
@@ -1088,7 +1181,15 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       const inner = Math.max(0, ...[...el.children].map((c) => c.getBoundingClientRect().height), own && cs.lineHeight !== "normal" ? parseFloat(cs.lineHeight) : 0);
       hug = !bg && !line && !parseFloat(cs.paddingTop) && !parseFloat(cs.paddingBottom) && inner >= r.height - 1;
       const kind = role ?? (el.tagName === "INPUT" ? `input ${(el as HTMLInputElement).type}` : el.tagName.toLowerCase());
-      if (!hug) { const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR); if (p) (s.parts ??= new Set()).add(p.key); }
+      if (!hug) {
+        const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR);
+        if (p) {
+          (s.parts ??= new Set()).add(p.key);
+          const hs = partHeights.get(p.key) ?? new Map<number, { n: number; at: string }>(), h = Math.round(boxR.height), had = hs.get(h);
+          partHeights.set(p.key, hs);
+          if (had) had.n++; else hs.set(h, { n: 1, at: place(el, boxR) });
+        }
+      }
       controls.push({ el, r: boxR });
     }
     const no = stray(el, p), within = no ? null : inPart(el, p);
@@ -1288,6 +1389,64 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   };
   for (const c of controls) for (const s of statesOf(c.el)) add(groups.states, s, c.el, c.r);
 
+  // focus visible (WCAG 2.4.7): forced focused, the control changes none of its colors, outline, shadow, underline or
+  // border. A ring drawn by an ancestor's :focus-within can't be seen here: unsure. Needs the capture's forcing.
+  const focusW = want("focus");
+  if (focusW.level) {
+    const within = sheets.plain.filter((x) => /:focus-within/.test(x.sel)).map((x) => x.sel.replace(/:focus-within/g, ""));
+    for (const c of controls) {
+      const real = forced.get(c.el), ring = real && rings.get(real);
+      if (!real?.has("focus") || !ring?.focus || turnedOff(c.el) || c.el.closest("[inert]") || c.el.getAttribute("tabindex") === "-1") continue;
+      if (JSON.stringify(real.get("focus")) !== JSON.stringify(real.get("rest")) || ring.focus !== ring.rest) continue;
+      let unsure = false;
+      for (let a = c.el.parentElement; a && !unsure; a = a.parentElement) unsure = within.some((s) => { try { return a!.matches(s); } catch { return false; } });
+      hit(`focus|${part(c.el)?.key ?? c.el.tagName.toLowerCase()}`, c.el, c.r, { unsure });
+    }
+  }
+  // target size (WCAG 2.5.8): under 24 px either way fails only when a 24 px circle on it reaches another target or
+  // another small target's circle; inline links in a sentence, unstyled native checkboxes and the like, and turned-off
+  // controls are exempt; a label counts toward an input's target
+  const targetW = want("target");
+  if (targetW.level) {
+    const min = targetW.n ?? 24;
+    const boxes = controls.filter((c) => !c.el.closest("[inert]")).map((c) => ({ el: c.el, r: c.el.getBoundingClientRect() }));
+    const exempt = (el: Element) => {
+      if (turnedOff(el)) return true;
+      const cs = getComputedStyle(el);
+      if (el.matches("a[href]") && cs.display === "inline" && [...(el.parentElement?.childNodes ?? [])].some((n) => n !== el && n.nodeType === 3 && n.textContent?.trim())) return true;
+      return el instanceof HTMLInputElement && /^(checkbox|radio|range|color|file|date|time)$/.test(el.type) && cs.appearance !== "none";
+    };
+    const small = boxes.filter((b) => (b.r.width < min - 0.5 || b.r.height < min - 0.5) && !exempt(b.el)).map((b) => {
+      let r = b.r;
+      for (const l of (b.el as HTMLInputElement).labels ?? []) { const lr = l.getBoundingClientRect(); const L = Math.min(r.left, lr.left), T = Math.min(r.top, lr.top); r = new DOMRect(L, T, Math.max(r.right, lr.right) - L, Math.max(r.bottom, lr.bottom) - T); }
+      return { ...b, hit: r };
+    }).filter((b) => b.hit.width < min - 0.5 || b.hit.height < min - 0.5);
+    const mid = (r: DOMRect) => [r.left + r.width / 2, r.top + r.height / 2];
+    const reaches = (x: number, y: number, r: DOMRect) => Math.hypot(x - Math.max(r.left, Math.min(x, r.right)), y - Math.max(r.top, Math.min(y, r.bottom))) < min / 2;
+    for (const s of small) {
+      const [x, y] = mid(s.hit);
+      const near = boxes.some((o) => o.el !== s.el && !o.el.contains(s.el) && !s.el.contains(o.el) && reaches(x, y, o.r))
+        || small.some((o) => o !== s && !o.el.contains(s.el) && !s.el.contains(o.el) && Math.hypot(x - mid(o.hit)[0], y - mid(o.hit)[1]) < min);
+      if (near) hit(`target|${part(s.el)?.key ?? s.el.getAttribute("role") ?? s.el.tagName.toLowerCase()}|${Math.round(s.hit.width)}x${Math.round(s.hit.height)}`, s.el, s.r);
+    }
+  }
+  // how each control's hover changes it: a wash (a see-through layer or overlay over its fill), a step (a new solid
+  // fill), something else (text, line), or nothing; compared within one part and variant, or one kind of control and fill
+  const hoverW = want("hover"), quietW = want("quiet");
+  const hovers = new Map<string, Record<"wash" | "step" | "other" | "none", { el: Element; r: DOMRect }[]>>();
+  if (hoverW.level || quietW.level) for (const c of controls) {
+    // a selected or open control wears that state's look, hovered or not: it isn't compared with the others
+    if (turnedOff(c.el) || getComputedStyle(c.el).pointerEvents === "none" || /selected|open/.test(stateOf(c.el))) continue;
+    const said = statesOf(c.el).filter((s) => s.startsWith("hover "));
+    const fill = said.find((s) => /^hover (overlay )?fill /.test(s)), h = fill?.split(" ").pop() ?? "";
+    const how = fill ? (/overlay/.test(fill) || /^#[0-9a-f]{8}$/.test(h) ? "wash" : "step") : said.length ? "other" : "none";
+    const p = part(c.el), kind = c.el.getAttribute("role") ?? c.el.tagName.toLowerCase();
+    const key = p ? `[${p.key}]` : `${kind} with ${colorOf(getComputedStyle(c.el).backgroundColor) ? "a fill" : "no fill"}`;
+    const g = hovers.get(key) ?? { wash: [], step: [], other: [], none: [] };
+    hovers.set(key, g);
+    g[how].push(c);
+  }
+
   // set where used: a bare element with one class of the use site, next to one with none, says what the class changes;
   // it counts when the part's element shows the same value (the part passed it on)
   const closed: CensusRow[] = [];
@@ -1434,6 +1593,76 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   partRows.sort((a, b) => looksOf(b) - looksOf(a) || b.n - a.n);
   if (closed.length) made.push({ name: "closed", what: "would look; not on screen: pop-ups and their contents the page holds but hasn't opened", rows: closed });
   if (partRows.length) made.push({ name: "parts", what: "by the component that drew them; looks are height (controls), corner, fill and text color, by state", rows: partRows });
+  // the findings, from the rows before any are cut to fit, and from what the checks above found
+  const findings: Finding[] = [];
+  const push = (f: Omit<Finding, "level">, level: Level | null) => { if (level) findings.push({ ...f, level }); };
+  const plain = (note?: string) => (note ?? "").replace(/ \((from|via) .*$/, "");
+  const offW = want("off"), nearW = want("near"), onceW = want("once");
+  for (const g of made) {
+    if (/^(parts|closed|left out|layout problems)$/.test(g.name)) continue;
+    const once: CensusRow[] = [];
+    for (const r of g.rows) {
+      const said = `${r.key}${r.note ?? ""}`;
+      if (/ OFF/.test(said)) push({ id: `off|${g.name}|${r.key}`, check: "off", key: `${g.name} ${r.key}${plain(r.note)}`, n: r.n, at: r.at.slice(0, 1), value: r.key.split(" ")[0] }, offW.level);
+      else if (/ near /.test(said)) push({ id: `near|${g.name}|${r.key}`, check: "near", key: `${g.name} ${r.key}${plain(r.note)}`, n: r.n, at: r.at.slice(0, 1), value: r.key }, nearW.level);
+      if (r.n === 1 && /^(type|radius|height|shadow|field)$/.test(g.name)) once.push(r);
+    }
+    // only where a group has enough values for one-offs to say something
+    if (once.length && g.rows.length >= 4) push({ id: `once|${g.name}`, check: "once", key: `${g.name} seen on one element only: ${once.slice(0, 8).map((r) => r.key).join(", ")}${once.length > 8 ? ", …" : ""} (${once.length} of ${g.rows.length} values)`, n: 1, at: once.slice(0, 2).map((r) => r.at[0]).filter(Boolean), values: once.map((r) => r.key) }, onceW.level);
+  }
+  for (const r of partRows) if (/\(no DS part\)/.test(r.key)) push({ id: `no-part|${r.key}`, check: "no-part", key: r.key, n: r.n, at: (r.looks ?? []).flatMap((l) => l.at).slice(0, 2), part: r.key.split(" ")[0] }, want("no-part").level);
+  // text in a token the team doesn't use for text
+  const textW = want("text-color"), allowed = new Set(rules.system?.textColors ?? []);
+  if (allowed.size) for (const r of made.find((g) => g.name === "text")?.rows ?? []) {
+    const name = r.key.split(" ")[0], base = name.split("/")[0];
+    if (/\(icon\)/.test(r.key) || !ruleColors.some((x) => x[0] === base) || allowed.has(name) || allowed.has(base)) continue;
+    push({ id: `text-color|${name}`, check: "text-color", key: `text ${name} not a text color (system.textColors)`, n: r.n, at: r.at.slice(0, 2), value: name }, textW.level);
+  }
+  // a fill and its words: only the text tokens the team pairs with that fill
+  const pairW = want("pair"), allow = new Map<string, Set<string>>();
+  for (const [f, t] of rules.system?.pairs ?? []) allow.set(f, (allow.get(f) ?? new Set<string>()).add(t));
+  for (const [k, n] of pairs) {
+    const [bg, fg] = k.split(" "), f = tokenOf(bg).name, t = tokenOf(fg).name ?? fg, ok = f ? allow.get(f) : undefined;
+    if (!f || !ok || ok.has(t) || ok.has(t.split("/")[0])) continue;
+    const at = hits.get(`pairat|${k}`);
+    push({ id: `pair|${f}|${t}`, check: "pair", key: `fill ${f} with text ${t} (system.pairs: ${[...ok].join(" or ")})`, n, at: at?.at.slice(0, 1) ?? [], value: `${f} ${t}` }, pairW.level);
+  }
+  // what the page checks found, colors named by their tokens
+  for (const [id, h] of hits) {
+    const [check, a, b] = id.split("|");
+    if (check === "contrast") {
+      const team = W.contrast.n, floor = team !== undefined ? (h.big ? Math.min(3, team) : team) : h.big ? 3 : 4.5, wcag = h.big ? 3 : 4.5;
+      const crit = team !== undefined && team < wcag ? ` (team floor; WCAG 1.4.3 asks ${wcag})` : " (WCAG 1.4.3)";
+      const nm = (x: string) => tokenOf(x).name ?? x;
+      push({ id, check, key: `contrast ${h.min!.toFixed(2)}:1 ${h.what}${nm(h.fg!)} on ${nm(h.bg!)}${h.big ? " (large text)" : ""} below ${floor}${crit}`, n: h.n, at: h.at, unsure: h.unsure, value: `${nm(h.fg!)} on ${nm(h.bg!)}`, values: h.names }, W.contrast.level);
+    } else if (check === "focus") push({ id, check, key: `focus not visible (2.4.7): ${a} changes nothing focused`, n: h.n, at: h.at, unsure: h.unsure, part: a, values: h.names }, focusW.level);
+    else if (check === "target") push({ id, check, key: `target ${b} under ${targetW.n ?? 24}px, too close to another (2.5.8): ${a}`, n: h.n, at: h.at, part: a, value: b, values: h.names }, targetW.level);
+    else if (check === "small-text") push({ id, check, key: `text ${a}px under ${W.small.n ?? (innerWidth >= 768 ? 10 : 11)}px (Apple's minimum at this width)`, n: h.n, at: h.at, value: a }, W.small.level);
+    else if (check === "light-text") push({ id, check, key: `text ${a.split("/")[0]}px at weight ${a.split("/")[1]} (light weights at small sizes are hard to read)`, n: h.n, at: h.at, value: a }, W.light.level);
+    else if (check === "legacy") push({ id, check, key: `legacy part ${a} on screen (system.legacyParts)`, n: h.n, at: h.at, part: a }, W.legacy.level);
+  }
+  for (const [key, g] of hovers) {
+    const w = g.wash.length, s = g.step.length, changes = w + s + g.other.length;
+    if (w && s) { const few = w < s ? g.wash : g.step; push({ id: `hover|${key}`, check: "hover", key: `hover in ${key}: wash ×${w}, step ×${s}; the ${w < s ? "wash" : "step"} ones`, n: 1, at: few.slice(0, 3).map((c) => place(c.el, c.r)), part: key }, hoverW.level); }
+    if (g.none.length && changes >= 2 && g.none.length < changes) push({ id: `quiet|${key}`, check: "quiet", key: `hover changes nothing in ${key}, where ${changes} others change`, n: g.none.length, at: g.none.slice(0, 3).map((c) => place(c.el, c.r)), part: key }, quietW.level);
+  }
+  // a part drawn at more heights than the variants it was used with
+  const matrixW = want("matrix"), byName = new Map<string, [string, Map<number, { n: number; at: string }>][]>();
+  for (const [k, hs] of partHeights) { const name = k.split(" ")[0]; byName.set(name, [...(byName.get(name) ?? []), [k, hs]]); }
+  for (const [name, keys] of byName) {
+    const heights = new Set(keys.flatMap(([, hs]) => [...hs.keys()]));
+    if (heights.size <= keys.length) continue;
+    const split = keys.filter(([, hs]) => hs.size > 1).sort((a, b) => b[1].size - a[1].size).slice(0, 2);
+    const say = split.map(([k, hs]) => `${k.slice(name.length).trim() || "(no variant)"}: ${[...hs].sort((a, b) => b[1].n - a[1].n).map(([h, x]) => `${h} ×${x.n}`).join(", ")}`).join("; ");
+    const odd = split.flatMap(([, hs]) => [...hs.values()].sort((a, b) => a.n - b.n).slice(0, 1).map((x) => x.at));
+    push({ id: `matrix|${name}`, check: "matrix", key: `${name}: ${keys.length} variant${keys.length > 1 ? "s" : ""} used, ${heights.size} heights drawn${say ? `; ${say}` : ""}`, n: 1, at: odd.slice(0, 2), part: name, values: keys.flatMap(([k, hs]) => [...hs.keys()].map((h) => `${k} ${h}`)) }, matrixW.level);
+  }
+  // how much of the screen's controls the design system's parts drew
+  const adoptW = want("adoption"), drawn = controls.filter((c) => { const p = part(c.el); return rules.parts?.length ? p?.listed || !!inPart(c.el, p) : !!p; }).length;
+  if (adoptW.level && controls.length && (rules.parts?.length || drawn)) {
+    const pct = `${Math.round((drawn / controls.length) * 100)}%`;
+    push({ id: "adoption", check: "adoption", key: `DS adoption: ${pct} of controls drawn by DS parts (${drawn} of ${controls.length})`, n: 0, at: [], value: pct }, adoptW.level);
+  }
   const give = shares(made.map((g) => g.rows.length), cap);
   made.forEach((g, i) => { if (g.rows.length > give[i]) { g.more = g.rows.length - give[i]; g.rows = g.rows.slice(0, give[i]); } });
   const left: CensusRow[] = [];
@@ -1459,5 +1688,31 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       items.push({ id: `${nameOf(name)}${p ? ` [${p.say}]` : ""}${where(it.el)}`, loose: `${tag}${p ? ` [${p.key}]` : ""}${where(it.el)}`, at: place(it.el, it.r, name), box: [it.r.left, it.r.top, it.r.width, it.r.height].map(Math.round) as CensusItem["box"], look });
     }
   }
-  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items };
+  const hint = asksChecks(rules) ? undefined : 'accessibility checks and observations are off: add "extends": "recommended@1" to rules.json, or --extends recommended@1';
+  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items, findings, ...(hint ? { hint } : {}), ...(rules.items ? { tokens: declaredTokens() } : {}) };
+}
+
+/**
+ * The custom properties the page declares on its root or a theme scope (:root, html, [data-theme], .dark, .light),
+ * each with its value here and whether any rule uses it (var(--x)): a design system's tokens, for census init.
+ * Another site's sheets can't be read, so their properties are missing.
+ */
+export function declaredTokens(): DeclaredToken[] {
+  const raw = new Map<string, string>(), used = new Set<string>();
+  const walk = (list: CSSRuleList) => {
+    for (const rule of list) {
+      if (rule instanceof CSSStyleRule) {
+        for (const m of rule.cssText.matchAll(/var\(\s*(--[\w-]+)/g)) used.add(m[1]);
+        if (/^(:root|html)\b|\[data-theme|\[data-mode|^\.(dark|light)\b/.test(rule.selectorText)) for (const p of rule.style) if (p.startsWith("--") && !raw.has(p)) raw.set(p, rule.style.getPropertyValue(p).trim());
+      }
+      const inner = (rule as CSSGroupingRule).cssRules;
+      if (inner) walk(inner);
+    }
+  };
+  for (const s of document.styleSheets) { try { walk(s.cssRules); } catch { /* another site's sheet */ } }
+  const root = getComputedStyle(document.documentElement);
+  return [...raw].slice(0, 3000).map(([name, r]) => {
+    const value = root.getPropertyValue(name).trim() || r, c = /^(#|rgb|hsl|hwb|lab|lch|oklab|oklch|color\(|[a-z]+$)/i.test(value) && !/^(none|inherit|initial|auto|normal|bold|solid|transparent|currentcolor)$/i.test(value) ? parseColor(value) : null;
+    return { name, raw: r, value, used: used.has(name), ...(c ? { color: hex(c) } : {}) };
+  });
 }

@@ -1,0 +1,115 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Harbor Exchange</title>
+<style>
+  :root { --surface-0: #0b0b0c; --surface-1: #151517; --surface-2: #1f1f22; --surface-3: #2a2a2e; --white-100: #ffffff; --white-70: #b3b3b3; --white-50: #808080; --white-40: #6b6b6b; --green-500: #22c55e; --red-500: #ef4444; --accent: #6a45f5; --link: #8f74ff; --white-5: rgba(255,255,255,.05); --white-10: rgba(255,255,255,.1); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface-0); color: var(--white-100); font: 400 14px/20px Inter, system-ui, sans-serif; }
+  button, input { font: inherit; }
+  header { display: flex; align-items: center; gap: 16px; padding: 0 16px; height: 56px; background: var(--surface-1); }
+  .brand { font: 600 16px/22px Inter, system-ui, sans-serif; margin-right: 16px; }
+  [role=tablist] { display: flex; gap: 4px; }
+  .tab { height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: var(--white-70); }
+  .tab:hover { background: var(--white-5); }
+  .tab[aria-selected=true] { background: var(--white-10); color: var(--white-100); }
+  .spacer { flex: 1; }
+  .icon { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: var(--surface-2); color: var(--white-70); font-size: 12px; line-height: 16px; }
+  .icons { display: flex; gap: 2px; }
+  .btn { height: 32px; padding: 0 14px; border: 0; border-radius: 6px; font-weight: 500; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .primary { background: var(--accent); color: var(--white-100); }
+  .primary:hover { background: #7558f7; }
+  .secondary { background: var(--surface-2); color: var(--white-100); }
+  .secondary:hover { background: var(--surface-3); }
+  .ghost { background: transparent; color: var(--white-70); }
+  .ghost:hover { background: var(--white-5); }
+  .sm { height: 24px; padding: 0 8px; font: 500 12px/16px Inter, system-ui, sans-serif; border-radius: 4px; }
+  .lead { border: 1px solid var(--white-10); }
+  .tight { height: 30px; }
+  .go:focus-visible { outline: none; }
+  main { display: grid; grid-template-columns: 1fr 360px; gap: 16px; padding: 16px; }
+  h1 { font: 600 24px/30px Inter, system-ui, sans-serif; margin: 0 0 12px; color: var(--white-40); }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .chips { display: flex; gap: 6px; margin-bottom: 12px; }
+  .chip { height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--white-70); font: 500 12px/16px Inter, system-ui, sans-serif; }
+  .chip:hover { background: var(--white-5); }
+  .chip.fut:hover { background: var(--surface-3); }
+  .chip[aria-pressed=true] { background: var(--white-10); color: var(--white-100); }
+  .table { background: var(--surface-1); border-radius: 8px; padding: 8px 0; }
+  .row { display: grid; grid-template-columns: 1fr 120px 120px; padding: 8px 16px; }
+  .row .up { color: var(--green-500); } .row .down { color: var(--red-500); }
+  .muted { color: var(--white-50); }
+  .stamp { font-size: 9px; line-height: 12px; color: var(--white-50); }
+  .note { color: var(--white-70); margin: 12px 0 0; }
+  .note a { color: var(--link); }
+  .old { color: var(--white-70); margin: 8px 0 0; font: 400 14px/20px Inter, system-ui, sans-serif; }
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  .card { position: relative; background: var(--surface-1); border-radius: 13px; padding: 16px; }
+  .card h2 { font: 600 16px/22px Inter, system-ui, sans-serif; margin: 0 0 12px; }
+  .close { position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--white-50); font-size: 12px; line-height: 16px; }
+  .field { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 6px 0 12px; border-radius: 6px; background: var(--surface-2); margin-bottom: 8px; }
+  .field input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--white-100); height: 20px; padding: 0; }
+  .field input::placeholder { color: #3a3a3a; }
+  .hint { color: #5f5f5f; font-size: 12px; line-height: 16px; margin: 4px 0 12px; }
+  .actions { display: flex; gap: 8px; }
+  .actions .btn { flex: 1; }
+  .actions .label { flex: none; }
+  .label { width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .panel { background: #1e1e21; border-radius: 8px; padding: 12px 16px; }
+  .panel p { margin: 0; color: var(--white-70); }
+</style></head>
+<body>
+  <header>
+    <span class="brand">Harbor</span>
+    <div role="tablist">
+      <button class="tab" data-part="Tab" role="tab" aria-selected="true">Markets</button>
+      <button class="tab" data-part="Tab" role="tab" aria-selected="false">Portfolio</button>
+      <button class="tab" data-part="Tab" role="tab" aria-selected="false">Orders</button>
+    </div>
+    <span class="spacer"></span>
+    <div class="icons">
+      <button class="icon" data-part="IconButton" aria-label="Watchlist">★</button>
+      <button class="icon" data-part="IconButton" aria-label="Alerts">!</button>
+    </div>
+    <button class="btn primary go" data-part="Button" data-variant="primary">Deposit</button>
+  </header>
+  <main>
+    <section>
+      <h1>Markets</h1>
+      <div class="toolbar">
+        <button class="btn secondary" data-part="Button" data-variant="secondary">Filter</button>
+        <button class="btn secondary lead" data-part="Button" data-variant="secondary">Share</button>
+        <button class="btn secondary tight" data-part="Button" data-variant="secondary">Export</button>
+        <button class="btn ghost" data-part="Button" data-variant="ghost">Columns</button>
+      </div>
+      <div class="chips">
+        <button class="chip" data-part="Chip" aria-pressed="true">All</button>
+        <button class="chip" data-part="Chip" aria-pressed="false">Spot</button>
+        <button class="chip fut" data-part="Chip" aria-pressed="false">Futures</button>
+        <button class="chip" data-part="Chip" aria-pressed="false">Options</button>
+      </div>
+      <div class="table">
+        <div class="row"><span>BTC / USD</span><span>64,210.50</span><span class="up">+1.24%</span></div>
+        <div class="row"><span>ETH / USD</span><span>3,118.20</span><span class="down">−0.82%</span></div>
+        <div class="row"><span>SOL / USD</span><span>142.07</span><span class="up">+3.10%</span></div>
+        <div class="row"><span class="muted">Prices</span><span class="stamp">updated 2s ago</span><span></span></div>
+      </div>
+      <p class="note">Prices are indicative. Read the <a href="#terms" data-part="Link">market terms</a> before you trade.</p>
+      <p class="old" data-part="LegacyText">Spreads widen during low liquidity.</p>
+    </section>
+    <aside>
+      <div class="card" data-part="Card">
+        <h2>Place order</h2>
+        <button class="close" data-part="IconButton" data-variant="ghost" aria-label="Close">×</button>
+        <div class="field"><input data-part="Input" placeholder="Amount in USD" aria-label="Amount"><button class="btn ghost sm" data-part="Button" data-variant="ghost" data-size="sm">Max</button></div>
+        <div class="field"><input data-part="Input" placeholder="Limit price" aria-label="Limit price"></div>
+        <p class="hint">Fees apply to limit orders</p>
+        <div class="actions">
+          <button class="btn primary" data-part="Button" data-variant="primary">Buy</button>
+          <button class="btn secondary" data-part="Button" data-variant="secondary" disabled style="color: var(--white-40)">Withdraw</button>
+        </div>
+        <div class="actions" style="margin-top:8px"><button class="btn ghost label" data-part="Button" data-variant="ghost">Advanced order settings</button></div>
+      </div>
+      <div class="panel"><p>Margin is off for this account.</p></div>
+    </aside>
+  </main>
+</body></html>

@@ -2,6 +2,7 @@
 // regression from an intended change. Elements are matched by their name, part and region (their words too when they
 // stayed the same); one that only moved is counted, not listed. Pure: runs in Node or the page.
 import type { Census, CensusItem } from "./census";
+import { diffFindings } from "./findings";
 
 const BOX = /-?\d+,-?\d+ \d+x\d+/g;
 const LOOK_ORDER = ["state", "height", "field", "radius", "fill", "line", "text", "type", "font", "shadow", "states", "set where used", "layer"];
@@ -161,5 +162,7 @@ export function diffCensus(before: Census, after: Census, max = 40, live?: Censu
   const np = [...pb].filter(([k]) => !pa.has(k)).map(([, v]) => `  ${v}`), fp = [...pa].filter(([k]) => !pb.has(k)).map(([, v]) => `  ${v}`);
   if (np.length) out.push(`layout problems new (${np.length})`, ...cap(np, max));
   if (fp.length) out.push(`layout problems gone (${fp.length})`, ...cap(fp, max));
+  // findings by id: rule breaks and accessibility new and fixed, observations only new
+  out.push(...diffFindings(before, after, max).lines);
   return out;
 }

@@ -1,0 +1,58 @@
+{
+  "colors": {
+    "surface-0": "#0b0b0c",
+    "surface-1": "#151517",
+    "surface-2": "#1f1f22",
+    "surface-3": "#2a2a2e",
+    "white-100": "#ffffff",
+    "white-70": "#b3b3b3",
+    "white-50": "#808080",
+    "white-40": "#6b6b6b",
+    "green-500": "#22c55e",
+    "red-500": "#ef4444",
+    "accent": "#6a45f5",
+    "accent-hover": "#7558f7",
+    "white-5": "#ffffff0d",
+    "white-10": "#ffffff1a",
+    "link": "#8f74ff"
+  },
+  "type": [
+    "14/400/20",
+    "14/500/20",
+    "12/400/16",
+    "12/500/16",
+    "16/600/22",
+    "24/600/30"
+  ],
+  "radii": [
+    4,
+    6,
+    8,
+    12
+  ],
+  "parts": [
+    "Button",
+    "IconButton",
+    "Chip",
+    "Tab",
+    "Input",
+    "Card",
+    "LegacyText",
+    "Link"
+  ],
+  "system": {
+    "textColors": [
+      "white-100",
+      "white-70",
+      "white-50",
+      "white-40",
+      "green-500",
+      "red-500",
+      "accent",
+      "link"
+    ],
+    "legacyParts": [
+      "LegacyText"
+    ]
+  }
+}
