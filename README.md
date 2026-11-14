@@ -97,7 +97,7 @@ save("out", { home });
 - `layout`: each row, column, grid and filled box: the gaps between its children as drawn (`gaps 32 16` when they differ, in order; `(margins)`, `(free space)` when not `gap` makes them), its `pad`ding (top right bottom left, or shortened), and how its children sit (`justify between`, `items center`), with the children it holds. Diff says a change in any of them.
 - `align`: words set other than to the start of their box (`text end`, `text center`). A control's centred label isn't said.
 - `accessibility`: WCAG 2.2 AA, with its exceptions: text contrast (1.4.3; large text at 3:1, turned-off controls exempt, a field's hint included), focus visible (2.4.7; needs the capture's forcing), target size (2.5.8; under 24px fails only when too close to another target). `(unsure)`: computed styles can't decide (a gradient or image behind the words, a ring an ancestor draws on focus-within).
-- `max`: a group holding more distinct values than best practice asks for, with the rarest ones to drop under it. On by default when rules.json gives no values to check against (below).
+- `max`: a group holding more distinct values than best practice asks for, with any that are a hair off another under it. On by default when rules.json gives no values to check against (below).
 - In diff: `accessibility new`/`fixed`; `(now also …)` when a finding covers elements it didn't before; `max worse`/`better` when a group's count moved.
 - A place: `role "words" [Part variant=x] in #region x,y wxh @ file:line`.
 
@@ -148,14 +148,13 @@ Every field is optional. `type` is size/weight/line-height in px. The second hal
 
 ```
 max (3 over, best practice)
-  text 8 values, 6 the max: drop 2, rarest first
-    #ef4444 ×1: span 912,250 120x20
-    #8f74ff ×1: a "market terms" [Link] 214,371 86x17
-  radius 5 values, 4 the max: drop 1, rarest first
-    full ×1: button "All" (selected) [Chip] 16,158 39x28
+  text 8 values, 6 the max: 2 over; none is a hair off another
+  radius 5 values, 4 the max: 1 over; none is a hair off another
+  height 7 values, 6 the max: 1 over; a hair off one in use:
+    button 30px near 32px (same part) ×1: button "Export" [Button variant=secondary] 162,114 71x30
 ```
 
-The values named are the rarest, which are both the easiest to drop and the likeliest to be accidents; `near` says when one is a hair off another already in use. The maxes are counted over the whole capture, so a color on two pages is one value, not two.
+It counts what a design system would list: an icon's color isn't one of its text colors, so icons aren't counted, and a type scale is a list of sizes, so type counts sizes. The values it names are the ones a hair off another in use — a 30px button beside 32px ones, a fill one shade off a token — because those are mistakes whatever the system is. It never names a value for being rare: on a well-made page the rarest values are its one h1 and its one hero size. When nothing is a hair off another, the count is the finding. The maxes are counted over the whole capture, so a color on two pages is one value, not two.
 
 | | font | type | text | fill | line | radius | shadow | height | layer |
 |---|---|---|---|---|---|---|---|---|---|

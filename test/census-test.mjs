@@ -66,23 +66,38 @@ check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor
     && s({ colors: { a: "#fff" }, max: { fill: 16 } }, "max").level === "max" && s({ checks: { max: "off" } }, "max").level === null
     && s({ extends: "best-practice@1" }, "contrast").level === null && s({ extends: ["recommended@1", "best-practice@1"] }, "contrast").level === "accessibility",
   "max: on with no values to check against, with its preset or its own numbers; its preset doesn't turn on the accessibility ones");
-  // a group of n values, the rarest last so the finding has to sort them
+  // a group of n values, used less and less: the last is the rarest, and must not be named for it
   const group = (name, n, more) => ({ name, rows: Array.from({ length: n }, (_, i) => ({ key: `#${String(i).padStart(6, "0")}`, n: n - i, at: [`div ${i},0 1x1`] })), ...(more ? { more } : {}) });
   const one = C.maxFindings([group("radius", 7)], {});
   check(one.length === 1 && one[0].id === "max|radius" && one[0].level === "max" && one[0].n === 7
-    && one[0].key === "radius 7 values, 4 the max: drop 3, rarest first" && one[0].at[0] === "#000006 ×1: div 6,0 1x1" && one[0].at[2] === "#000004 ×3: div 4,0 1x1",
-  "a group over its max: the count, the max, how many to drop, and the rarest values first") || console.log(JSON.stringify(one));
+    && one[0].key === "radius 7 values, 4 the max: 3 over; none is a hair off another" && one[0].at.length === 0,
+  "a group over its max: the count and the max, and no value named for being rare (a page's one h1 is rare on purpose)") || console.log(JSON.stringify(one));
   check(C.maxFindings([group("radius", 4)], {}).length === 0 && C.maxFindings([group("radius", 7)], { max: { radius: "off" } }).length === 0
-    && C.maxFindings([group("radius", 7)], { max: { radius: 6 } })[0].key === "radius 7 values, 6 the max: drop 1, rarest first"
+    && C.maxFindings([group("radius", 7)], { max: { radius: 6 } })[0].key === "radius 7 values, 6 the max: 1 over; none is a hair off another"
     && C.maxFindings([group("radius", 2, 6)], {})[0].n === 8, "under the max says nothing; \"off\" turns a group off; a number of your own wins; trimmed rows still count");
-  check(C.maxFindings([group("fill", 16)], {})[0].at[3] === "... 1 more" && C.maxFindings([group("states", 40)], {}).length === 0,
-    "only three values are named, with the rest counted; a group with no max is left alone");
+  // a value a hair off another in use is named, rarest of those first, three at most
+  const near = (name, keys) => ({ name, rows: keys.map(([key, n, note], i) => ({ key, n, note, at: [`div ${i},0 1x1`] })) });
+  const fills = C.maxFindings([near("fill", [["surface-1", 9], ["surface-2", 8], ["#1e1e21", 1, " near surface-2 (from .panel, written out)"], ["#151516", 2, " near surface-1"],
+    ["a", 7], ["b", 6], ["c", 5], ["d", 5], ["e", 4], ["f", 4], ["g", 3], ["h", 3], ["#1f1f23", 3, " near surface-2"], ["#161617", 4, " near surface-1"]])], {})[0];
+  check(fills.key === "fill 14 values, 12 the max: 2 over; a hair off one in use:" && fills.at[0] === "#1e1e21 near surface-2 ×1: div 2,0 1x1" && fills.at[2] === "#1f1f23 near surface-2 ×3: div 12,0 1x1" && fills.at[3] === "... 1 more",
+    "the values named are the ones a hair off another, rarest of them first, where they come from left out, three at most") || console.log(JSON.stringify(fills));
+  // an icon's color isn't a text color the system has to list
+  const text = near("text", [["#0b0c0c", 26], ["#1a65a6", 12], ["#ffffff", 11], ["#1d70b8", 1], ["#ffffff (icon)", 6], ["#00ffe0 (icon)", 3], ["#d2e2f1 (icon)", 3], ["#000000 (icon)", 3], ["#1d70b8 (icon)", 1]]);
+  check(!C.maxFindings([text], {}).length, "icons aren't counted: 4 text colors and 5 icon colors are under a max of 6");
+  // a type scale is sizes: line height and weight don't make a new one
+  const scale = near("type", [["19/400/19", 9], ["19/400/25", 7], ["19/700/25", 2], ["24/700/30", 5], ["16/400/20.5", 4], ["16/700/normal", 3], ["16/400/23.2", 1], ["48/700/50", 2], ["64/700/68.5", 1], ["36/700/40", 1], ["13.3/400/normal", 1], ["tracking at 16px: +0.5 ×2, -0.2 ×1", 0]]);
+  check(!C.maxFindings([scale], {}).length, "type counts sizes: 11 size/weight/line-height rows are 7 sizes, under a max of 8 (a letter-spacing note isn't one)");
+  const sizes = C.maxFindings([near("type", [["16/400/24", 9], ["15/400/22", 2], ["12/400/16", 5], ["14/500/20", 4], ["20/600/28", 3], ["24/600/30", 2], ["32/700/40", 1], ["40/700/48", 1], ["48/700/56", 1]])], {})[0];
+  check(sizes.key === "type 9 sizes, 8 the max: 1 over; a hair off one in use:" && sizes.at[0] === "15px near 16px ×2: div 1,0 1x1" && sizes.at.length === 1,
+    "a size within 1px of one used more is named, by size") || console.log(JSON.stringify(sizes));
+  check(C.maxFindings([group("fill", 16)], {})[0].at.length === 0 && C.maxFindings([group("states", 40)], {}).length === 0,
+    "no value is named when none is a hair off another; a group with no max is left alone");
   const palette = C.maxFindings([], { colors: Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`c${i}`, "#000000"])), extends: "best-practice@1" });
   check(palette.length === 1 && palette[0].id === "max|rules.json|colors" && palette[0].key === "rules.json lists 23 colors, 22 the max",
     "the design system itself: a palette bigger than the groups it has to cover") || console.log(JSON.stringify(palette));
-  const lines = C.censusLines({ head: "h", groups: [], report: true, findings: C.maxFindings([group("radius", 5), group("font", 3)], {}) });
-  check(lines.join("\n") === "h\nmax (2 over, best practice)\n  radius 5 values, 4 the max: drop 1, rarest first\n    #000004 ×1: div 4,0 1x1\n  font 3 values, 2 the max: drop 1, rarest first\n    #000002 ×1: div 2,0 1x1",
-    "max findings as lines: a group a line, the values to drop under it") || console.log(lines.join("\n"));
+  const lines = C.censusLines({ head: "h", groups: [], report: true, findings: C.maxFindings([near("radius", [["6px", 9], ["8px", 4], ["4px", 2], ["12px", 2], ["7px", 1, " near 6px"]]), group("font", 3)], {}) });
+  check(lines.join("\n") === "h\nmax (2 over, best practice)\n  radius 5 values, 4 the max: 1 over; a hair off one in use:\n    7px near 6px ×1: div 4,0 1x1\n  font 3 values, 2 the max: 1 over; none is a hair off another",
+    "max findings as lines: a group a line, and under it the values a hair off another") || console.log(lines.join("\n"));
   // merged: the same value on two pages is one value, so the maxes are counted again off the merged groups
   const page = (keys) => ({ head: "h", groups: [{ name: "radius", rows: keys.map((k) => ({ key: k, n: 1, at: ["div 0,0 1x1"] })) }], findings: C.maxFindings([{ name: "radius", rows: keys.map((k) => ({ key: k, n: 1, at: [] })) }], {}) });
   const m = C.mergeCensus({ home: page(["1px", "2px", "3px", "4px", "5px"]), cart: page(["1px", "2px", "3px", "4px", "6px"]) }, {});
@@ -92,7 +107,7 @@ check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor
   // a repo already over its max can still hold the line: only a group that grew fails
   const cen = (n) => ({ head: "h", groups: [], findings: C.maxFindings([group("radius", n)], {}) });
   const worse = C.diffFindings(cen(7), cen(9)), same = C.diffFindings(cen(7), cen(7)), better = C.diffFindings(cen(9), cen(7));
-  check(worse.maxWorse.length === 1 && worse.lines.join("\n") === "max worse (1)\n  radius 9 values, 4 the max: drop 5, rarest first (was 7)"
+  check(worse.maxWorse.length === 1 && worse.lines.join("\n") === "max worse (1)\n  radius 9 values, 4 the max: 5 over; none is a hair off another (was 7)"
     && same.maxWorse.length === 0 && !same.lines.length && better.maxWorse.length === 0 && better.lines[0] === "max better (1)",
   "diff: a group with more values than before is worse, the same count is not, fewer is better") || console.log(worse.lines.join("\n"));
   check(C.diffFindings(cen(7), cen(4)).lines.join("\n") === "max better (1)\n  radius 7 values, 4 the max — now under", "a group back under its max is said once and drops out");
@@ -324,6 +339,38 @@ if (chromium) {
     try { dout = execFileSync("node", [cli, "diff", "--fail-on", "new-accessibility", `${dir}/c1/census.json`, `${dir}/d2/census.json`], { stdio: "pipe", timeout: 60000 }).toString(); } catch (e) { dexit = e.status; dout = e.stdout.toString(); }
     check(dexit === 1 && /accessibility new \(1\)\n {2}target 16x16 [^\n]*\(now also button "Close", button "Pin"\)/.test(dout) && /accessibility fixed \(1\)\n {2}contrast 4\.48:1 muted on paper/.test(dout) && /values new on the page[^\n]*\n {2}text #555555 OFF/.test(dout),
       "diff: findings new and fixed by id (a finding that now covers more elements says which), and --fail-on new-accessibility exits 1") || console.log(dout);
+  }
+}
+
+// ---------- A page with a strict Content-Security-Policy ----------
+{
+  const { execFile } = await import("node:child_process");
+  const { createServer } = await import("node:http");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { findChrome } = await import("../cli/cdp.mjs");
+  const chrome = await findChrome().catch(() => null);
+  if (!chrome) console.log("skip the CSP test: no Chrome found");
+  else {
+    // style-src 'self' refuses any <style> a script adds, and report-uri has the browser report each one
+    let reports = 0;
+    const css = ".btn{background:#111111;color:#ffffff;height:32px;border:0;transition:background-color 4s linear}.btn:hover{background:#ff0000}.banner{background:#00ff00;height:40px}";
+    const html = '<!doctype html><html><head><link rel="stylesheet" href="/app.css"></head><body><div class="banner"><button class="btn">Accept</button></div><button class="btn">Save</button></body></html>';
+    const server = createServer((req, res) => {
+      if (req.url === "/csp") { reports++; req.resume(); res.writeHead(204).end(); return; }
+      if (req.url === "/app.css") { res.writeHead(200, { "content-type": "text/css" }).end(css); return; }
+      res.writeHead(200, { "content-type": "text/html", "content-security-policy": "default-src 'self'; style-src 'self'; report-uri /csp" }).end(html);
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const url = `http://127.0.0.1:${server.address().port}/`, dir = mkdtempSync(`${tmpdir()}/census-csp-`), cli = fileURLToPath(new URL("../cli/census.mjs", import.meta.url));
+    // execFile, not execFileSync: the server answers on this process's event loop
+    const out = await new Promise((ok, no) => execFile("node", [cli, "capture", "--out", dir, "--wait", "3000", "--hide", ".banner", `p=${url}`], { timeout: 60000 }, (e) => (e ? no(e) : ok(readFileSync(`${dir}/p.txt`, "utf8")))));
+    await new Promise((r) => setTimeout(r, 300)); // a report the browser sends late
+    server.close();
+    const states = out.split(/\n(?=\S)/).find((x) => x.startsWith("states (")) ?? "";
+    check(reports === 0, `CSP: a capture sends the site no violation reports (${reports} sent)`);
+    check(/hover fill #ff0000/.test(states), `CSP: transitions are off while states are read, so hover reads its own color, not one partway there${/hover fill #ff0000/.test(states) ? "" : `\n${states || out}`}`);
+    check(!/#00ff00|"Accept"/.test(out), "CSP: --hide hides");
   }
 }
 

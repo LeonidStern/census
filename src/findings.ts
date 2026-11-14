@@ -87,25 +87,57 @@ export function checkSetting(rules: CheckRules, check: string): { level: Level |
 export const asksChecks = (rules: CheckRules) => !!(rules.extends || (rules.checks && Object.values(rules.checks).some((v) => v !== "off")) || checkSetting(rules, "max").level);
 
 /**
- * The groups holding more distinct values than their max, rarest values first — those are both the easiest to drop
- * and the likeliest to be accidents. One finding per group, so a diff says a group went over or came back under
- * instead of churning an id every time the tail moves. `groups` are counted whole, trimmed rows included.
+ * The groups holding more distinct values than their max, one finding per group (so a diff says a group went over or
+ * came back under instead of churning an id as values come and go).
+ *
+ * What counts is what a design system would list. An icon's color isn't one of its text or fill colors, so icons
+ * aren't counted; a type scale is a list of sizes, so type counts sizes, not size/weight/line-height.
+ *
+ * The values it names are the ones a hair off another in use — a fill 1 off a token, a 30px button beside 32px ones —
+ * because those are mistakes whatever the system is. It doesn't name the rare ones: on a well-made site the rarest
+ * values are the page's one h1 and its one hero size, which are rare on purpose. When nothing is a hair off another,
+ * the count is the finding, and it says so.
  */
 export function maxFindings(groups: CensusGroup[], rules: CheckRules, name = 3): Finding[] {
   const want = checkSetting(rules, "max");
   if (!want.level) return [];
   const level = want.level;
   const capOf = (group: string) => rules.max?.[group] ?? MAX_DEFAULTS[group];
+  const plain = (note?: string) => (note ?? "").replace(/ \((from|via) .*$/, "");
+  const line = (key: string, n: number, at?: string) => `${key}${n ? ` ×${n}` : ""}${at ? `: ${at}` : ""}`;
   const out: Finding[] = [];
   for (const g of groups) {
     const cap = capOf(g.name);
     if (cap === undefined || cap === "off") continue;
-    const n = g.rows.length + (g.more ?? 0);
+    // an icon's color, and a type group's letter-spacing note, aren't values of the group
+    const rows = g.rows.filter((r) => !/\(icon\)/.test(r.key) && !r.key.startsWith("tracking at "));
+    let n: number, unit = "values", odd: string[];
+    if (g.name === "type") {
+      // sizes: rows trimmed to fit can't be told apart by size, so a type group trimmed by a merge counts what it shows
+      const sizes = new Map<number, { n: number; at?: string }>();
+      for (const r of rows) {
+        const px = parseFloat(r.key);
+        if (Number.isNaN(px)) continue;
+        const s = sizes.get(px) ?? { n: 0, at: r.at[0] };
+        s.n += r.n;
+        sizes.set(px, s);
+      }
+      n = sizes.size; unit = "sizes";
+      // a size within 1px of one used more is a hair off it
+      odd = [...sizes].filter(([px, s]) => [...sizes].some(([q, t]) => q !== px && Math.abs(q - px) <= 1 && t.n > s.n))
+        .sort((a, b) => a[1].n - b[1].n)
+        .map(([px, s]) => { const near = [...sizes].filter(([q, t]) => q !== px && Math.abs(q - px) <= 1 && t.n > s.n).sort((a, b) => b[1].n - a[1].n)[0][0]; return line(`${px}px near ${near}px`, s.n, s.at); });
+    } else {
+      n = rows.length + (g.more ?? 0);
+      odd = rows.filter((r) => / near /.test(r.note ?? "")).sort((a, b) => a.n - b.n).map((r) => line(`${r.key}${plain(r.note)}`, r.n, r.at[0]));
+    }
     if (n <= cap) continue;
-    const over = n - cap;
-    const tail = [...g.rows].sort((a, b) => a.n - b.n).slice(0, Math.min(name, over))
-      .map((r) => `${r.key}${(r.note ?? "").replace(/ \((from|via) .*$/, "")}${r.n ? ` ×${r.n}` : ""}${r.at[0] ? `: ${r.at[0]}` : ""}`);
-    out.push({ id: `max|${g.name}`, check: "max", level, key: `${g.name} ${n} values, ${cap} the max: drop ${over}, rarest first`, n, at: [...tail, ...(over > tail.length ? [`... ${over - tail.length} more`] : [])] });
+    const over = n - cap, named = odd.slice(0, name);
+    out.push({
+      id: `max|${g.name}`, check: "max", level, n,
+      key: `${g.name} ${n} ${unit}, ${cap} the max: ${over} over${odd.length ? "; a hair off one in use:" : "; none is a hair off another"}`,
+      at: [...named, ...(odd.length > named.length ? [`... ${odd.length - named.length} more`] : [])],
+    });
   }
   // the design system itself: a page can only use what its palette offers, so the palette is the thing that should be small
   const palette = Object.keys((rules as { colors?: Record<string, string> }).colors ?? {}).length;
