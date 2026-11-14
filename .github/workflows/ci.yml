@@ -1,0 +1,55 @@
+# Census's own build. The suite skips tests it has no browser for, which would make a green run mean less than it
+# looks: the page job installs one and fails if anything skips.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # the capture test drives the runner's Chrome over CDP; the page test skips here, the page job below runs it
+      - run: npm test
+
+  page:
+    name: the page, in Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # playwright is not a dependency of Census: nothing it ships needs one, and the four dev dependencies are a
+      # claim worth keeping. It is installed here alone, so the tests that need a browser run somewhere.
+      - run: npm i --no-save playwright@1.64.1
+      - run: npx playwright install --with-deps chromium
+      - name: npm test, and fail if a test skipped
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
+          if grep -q '^skip ' test.log; then
+            echo "::error::a test skipped: CI is the one place they all have to run"
+            grep '^skip ' test.log
+            exit 1
+          fi
