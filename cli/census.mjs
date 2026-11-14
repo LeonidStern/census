@@ -34,7 +34,9 @@ const USAGE = `census capture [options] <url | name=url>...
                       that matter (set where used, values off the system, a part in two looks). Needs a dev
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
-  --extends <preset>  turn on the accessibility checks (recommended@1); rules.json can say it too
+  --extends <preset>  turn on the accessibility checks (recommended@1) or the max check (best-practice@1);
+                      comma-separated for both. rules.json can say it too. The max check is on anyway when
+                      rules.json gives no values, so a run with no file still says something
   --fail-on <levels>  exit 1 on findings at these levels: rules (a value off rules.json), accessibility
                       (comma-separated; unsure ones never fail). Without it a capture exits 0 whatever it finds
 
@@ -44,8 +46,9 @@ census diff [--live <before2/census.json>] <before/census.json> <after/census.js
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
   Then accessibility findings new and fixed.
-  --fail-on new-rules,new-accessibility: exit 1 when the after capture has values off rules.json, or accessibility
-  findings, that the before capture didn't (what CI wants: a PR is judged only on what it added)
+  --fail-on new-rules,new-accessibility,max-worse: exit 1 when the after capture has values off rules.json, or
+  accessibility findings, that the before capture didn't, or holds more distinct values in a group than it did
+  (what CI wants: a PR is judged only on what it added, and a repo already over its max can still hold the line)
 
 Exit codes: 0 done, 1 findings at a --fail-on level, 2 usage or a capture that failed.
 `;
@@ -63,8 +66,8 @@ for (let i = 0; i < args.length; i++) {
 async function capture() {
   const C = await import(join(here, "../dist/census.mjs"));
   const rules = opt.rules ? JSON.parse(readFileSync(opt.rules, "utf8")) : {};
-  if (opt.extends) rules.extends = opt.extends;
-  if (rules.extends && !C.PRESETS.includes(rules.extends)) throw new Usage(`unknown preset ${rules.extends} (known: ${C.PRESETS.join(", ")})`);
+  if (opt.extends) rules.extends = String(opt.extends).split(",").map((x) => x.trim()).filter(Boolean);
+  for (const p of [rules.extends ?? []].flat()) if (!C.PRESETS.includes(p)) throw new Usage(`unknown preset ${p} (known: ${C.PRESETS.join(", ")})`);
   if (opt.closed) rules.closed = true;
   if (opt.sources) rules.sources = true;
   rules.items = true; // census.json keeps each element's look, for census diff
@@ -110,7 +113,7 @@ async function capture() {
       const live = data.again ? (await import("../dist/census.mjs")).changesOnItsOwn(data.items, data.again.items).filter((x) => data.items.includes(x)).length : 0;
       console.log(`${name} ${url}: ${settled === null ? `didn't settle in ${opt.wait ?? 15000} ms (requests still loading or the page still moving)` : `loaded and settled in ${t - t0} ms`}; read in ${ms} ms (${n} controls hovered, pressed and focused)${data.again ? `; ${live} elements change on their own` : ""}`);
     }
-    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(C.censusLines(C.mergeCensus(pages))));
+    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(C.censusLines(C.mergeCensus(pages, rules))));
     // census.json gets the same file:line places as the text, for census diff
     writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapPlaces(pages, map) : pages));
   } finally {
@@ -195,7 +198,7 @@ async function tour(page, rules, data, width, height, url) {
 
 async function diff() {
   const { diffCensus, diffFindings } = await import(join(here, "../dist/census.mjs"));
-  const levels = opt["fail-on"] ? failLevels(opt["fail-on"], ["new-rules", "new-accessibility"]) : new Set();
+  const levels = opt["fail-on"] ? failLevels(opt["fail-on"], ["new-rules", "new-accessibility", "max-worse"]) : new Set();
   let failing = 0;
   const [a, b] = rest.map((f) => JSON.parse(readFileSync(f, "utf8")));
   const live = opt.live ? JSON.parse(readFileSync(opt.live, "utf8")) : null;
@@ -207,6 +210,7 @@ async function diff() {
     const d = diffFindings(a[n], b[n]);
     if (levels.has("new-rules")) failing += d.newRules.length;
     if (levels.has("new-accessibility")) failing += d.newAccessibility.filter((f) => !f.unsure).length;
+    if (levels.has("max-worse")) failing += d.maxWorse.length;
   }
   console.log(out.join("\n").trim());
   if (failing) { console.log(`${failing} new findings at --fail-on ${opt["fail-on"]}`); process.exitCode = 1; }

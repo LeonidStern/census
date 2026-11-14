@@ -10,7 +10,7 @@
 // mark anything else with data-census-private. Mark a control that is dim on purpose with data-census-dim.
 
 import { colorProbe, contrast, over, parseColor } from "./color";
-import { asksChecks, checkSetting, findingLines, mergeFindings, type CheckSetting, type Finding, type Level } from "./findings";
+import { asksChecks, checkSetting, findingLines, maxFindings, mergeFindings, type CheckSetting, type Finding, type Level } from "./findings";
 
 const POPUP = "[role=menu],[role=listbox],[role=dialog],[role=alertdialog]";
 const PRESSABLE = "button,a[href],[role=button],[role=tab],[role=option],[role=menuitem],[role=switch],[role=checkbox],[role=radio],[role=treeitem],[role=row],[data-item],[data-section]";
@@ -287,12 +287,16 @@ function cross(a: DOMRect, b: DOMRect): DOMRect | null {
  * `sources`: " @ file:line" where a place's part was used, on the places that
  * need a fix (set where used, off the system, a part in two looks).
  * `items`: also each element's own look (Census.items), for diffCensus.
- * `extends`: "recommended@1" turns on the accessibility checks (findings.ts CHECKS); `checks` sets one check's level
- * and number ("off", "rule", a number, or ["rule", number]).
+ * `extends`: "recommended@1" turns on the accessibility checks, "best-practice@1" the max check (findings.ts CHECKS);
+ * either a name or a list of them. `checks` sets one check's level and number ("off", "rule", a number, or
+ * ["rule", number]).
+ * `max`: how many distinct values a group may hold (findings.ts MAX_DEFAULTS), by census group name — { "fill": 16 },
+ * or "off" for a group. The max check is on by default when rules.json gives no values at all, so a run with no file
+ * still says something.
  */
 export type StyleRules = {
   colors?: Record<string, string>; type?: string[]; radii?: number[]; parts?: string[]; shadows?: Record<string, string>; ignore?: string; foreign?: boolean; closed?: boolean; sources?: boolean; items?: boolean;
-  extends?: string; checks?: Record<string, CheckSetting>;
+  extends?: string | string[]; checks?: Record<string, CheckSetting>; max?: Record<string, number | "off">;
 };
 
 /** The census as data: groups of counted values with a few places each. censusLines writes it out; mergeCensus joins pages. */
@@ -703,7 +707,7 @@ function rowText(r: CensusRow): string {
  * once, with the pages it is on ("(all)", "(home+cart)"), its counts added
  * and a place from each page, tagged "[home]".
  */
-export function mergeCensus(pages: Record<string, Census>): Census {
+export function mergeCensus(pages: Record<string, Census>, rules: StyleRules = {}): Census {
   const names = Object.keys(pages);
   const groups: CensusGroup[] = [];
   type Acc = { row: CensusRow; pages: string[]; at: Map<string, string[]> };
@@ -733,7 +737,9 @@ export function mergeCensus(pages: Record<string, Census>): Census {
     for (let i = 0; i < 3; i++) for (const p of a.pages) { const x = a.at.get(p)?.[i]; if (x && a.row.at.length < 3 && !said.has(x)) { said.add(x); a.row.at.push(`[${p}] ${x}`); } }
   }
   for (const g of groups) if (g.name !== "layout problems") g.rows.sort((a, b) => looksOf(b) - looksOf(a) || b.n - a.n);
-  const findings = mergeFindings(pages), report = names.some((p) => pages[p].report);
+  // the maxes are counted again here: over all the pages a value seen on two of them is one value, not two
+  const merged = mergeFindings(pages), overs = maxFindings(groups, rules), findings = merged || overs.length ? [...(merged ?? []), ...overs] : undefined;
+  const report = names.some((p) => pages[p].report);
   return { head: `${pages[names[0]]?.head ?? "styles on screen"}; pages: ${names.join(", ")}`, groups: groups.map((g) => ({ ...g, more: g.more || undefined })), ...(findings ? { findings } : {}), ...(report ? { report } : {}) };
 }
 /** How many rows each group may show when they don't all fit: small groups whole, the rest an even share. */
@@ -1575,6 +1581,8 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     } else if (check === "focus") push({ id, check, key: `focus not visible (2.4.7): ${a} changes nothing focused`, n: h.n, at: h.at, unsure: h.unsure, values: h.names }, focusW.level);
     else if (check === "target") push({ id, check, key: `target ${b} under ${targetW.n ?? 24}px, too close to another (2.5.8): ${a}`, n: h.n, at: h.at, values: h.names }, targetW.level);
   }
+  // the groups over their max, counted before any rows are cut to fit
+  findings.push(...maxFindings(made, rules));
   const give = shares(made.map((g) => g.rows.length), cap);
   made.forEach((g, i) => { if (g.rows.length > give[i]) { g.more = g.rows.length - give[i]; g.rows = g.rows.slice(0, give[i]); } });
   const left: CensusRow[] = [];
@@ -1602,6 +1610,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   }
   // the findings are always in the data (diff and --fail-on read them); the text says them only when rules.json asks
   const report = asksChecks(rules);
-  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items, findings, ...(report ? { report } : {}) };
+  const against = rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : checkSetting(rules, "max").level ? ", against best practice" : "";
+  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${against}`, groups: made, items, findings, ...(report ? { report } : {}) };
 }
 

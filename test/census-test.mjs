@@ -59,6 +59,45 @@ check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor
     && d.newRules.length === 1 && d.newRules[0].id === "off|text|#222222" && d.newAccessibility.length === 1, "diff of findings: accessibility new and fixed by id, a finding that now covers another element; new values off the rules returned for --fail-on") || console.log(d.lines.join("\n"));
 }
 
+// ---------- Max: best practice with no design system ----------
+{
+  const s = C.checkSetting;
+  check(s({}, "max").level === "max" && s({ colors: { a: "#fff" } }, "max").level === null && s({ colors: { a: "#fff" }, extends: "best-practice@1" }, "max").level === "max"
+    && s({ colors: { a: "#fff" }, max: { fill: 16 } }, "max").level === "max" && s({ checks: { max: "off" } }, "max").level === null
+    && s({ extends: "best-practice@1" }, "contrast").level === null && s({ extends: ["recommended@1", "best-practice@1"] }, "contrast").level === "accessibility",
+  "max: on with no values to check against, with its preset or its own numbers; its preset doesn't turn on the accessibility ones");
+  // a group of n values, the rarest last so the finding has to sort them
+  const group = (name, n, more) => ({ name, rows: Array.from({ length: n }, (_, i) => ({ key: `#${String(i).padStart(6, "0")}`, n: n - i, at: [`div ${i},0 1x1`] })), ...(more ? { more } : {}) });
+  const one = C.maxFindings([group("radius", 7)], {});
+  check(one.length === 1 && one[0].id === "max|radius" && one[0].level === "max" && one[0].n === 7
+    && one[0].key === "radius 7 values, 4 the max: drop 3, rarest first" && one[0].at[0] === "#000006 ×1: div 6,0 1x1" && one[0].at[2] === "#000004 ×3: div 4,0 1x1",
+  "a group over its max: the count, the max, how many to drop, and the rarest values first") || console.log(JSON.stringify(one));
+  check(C.maxFindings([group("radius", 4)], {}).length === 0 && C.maxFindings([group("radius", 7)], { max: { radius: "off" } }).length === 0
+    && C.maxFindings([group("radius", 7)], { max: { radius: 6 } })[0].key === "radius 7 values, 6 the max: drop 1, rarest first"
+    && C.maxFindings([group("radius", 2, 6)], {})[0].n === 8, "under the max says nothing; \"off\" turns a group off; a number of your own wins; trimmed rows still count");
+  check(C.maxFindings([group("fill", 16)], {})[0].at[3] === "... 1 more" && C.maxFindings([group("states", 40)], {}).length === 0,
+    "only three values are named, with the rest counted; a group with no max is left alone");
+  const palette = C.maxFindings([], { colors: Object.fromEntries(Array.from({ length: 23 }, (_, i) => [`c${i}`, "#000000"])), extends: "best-practice@1" });
+  check(palette.length === 1 && palette[0].id === "max|rules.json|colors" && palette[0].key === "rules.json lists 23 colors, 22 the max",
+    "the design system itself: a palette bigger than the groups it has to cover") || console.log(JSON.stringify(palette));
+  const lines = C.censusLines({ head: "h", groups: [], report: true, findings: C.maxFindings([group("radius", 5), group("font", 3)], {}) });
+  check(lines.join("\n") === "h\nmax (2 over, best practice)\n  radius 5 values, 4 the max: drop 1, rarest first\n    #000004 ×1: div 4,0 1x1\n  font 3 values, 2 the max: drop 1, rarest first\n    #000002 ×1: div 2,0 1x1",
+    "max findings as lines: a group a line, the values to drop under it") || console.log(lines.join("\n"));
+  // merged: the same value on two pages is one value, so the maxes are counted again off the merged groups
+  const page = (keys) => ({ head: "h", groups: [{ name: "radius", rows: keys.map((k) => ({ key: k, n: 1, at: ["div 0,0 1x1"] })) }], findings: C.maxFindings([{ name: "radius", rows: keys.map((k) => ({ key: k, n: 1, at: [] })) }], {}) });
+  const m = C.mergeCensus({ home: page(["1px", "2px", "3px", "4px", "5px"]), cart: page(["1px", "2px", "3px", "4px", "6px"]) }, {});
+  const mf = (m.findings ?? []).filter((f) => f.level === "max");
+  check(mf.length === 1 && mf[0].n === 6, "merged pages: a value on both is counted once, and the max is judged on that") || console.log(JSON.stringify(mf));
+  check(!C.mergeCensus({ home: page(["1px"]), cart: page(["2px"]) }, {}).findings?.some((f) => f.level === "max"), "merged pages under the max say nothing");
+  // a repo already over its max can still hold the line: only a group that grew fails
+  const cen = (n) => ({ head: "h", groups: [], findings: C.maxFindings([group("radius", n)], {}) });
+  const worse = C.diffFindings(cen(7), cen(9)), same = C.diffFindings(cen(7), cen(7)), better = C.diffFindings(cen(9), cen(7));
+  check(worse.maxWorse.length === 1 && worse.lines.join("\n") === "max worse (1)\n  radius 9 values, 4 the max: drop 5, rarest first (was 7)"
+    && same.maxWorse.length === 0 && !same.lines.length && better.maxWorse.length === 0 && better.lines[0] === "max better (1)",
+  "diff: a group with more values than before is worse, the same count is not, fewer is better") || console.log(worse.lines.join("\n"));
+  check(C.diffFindings(cen(7), cen(4)).lines.join("\n") === "max better (1)\n  radius 7 values, 4 the max — now under", "a group back under its max is said once and drops out");
+}
+
 // ---------- Source maps ----------
 {
   const { transform } = await import("esbuild"), { sourceMapper, mapSources } = await import("../cli/sourcemap.mjs");
