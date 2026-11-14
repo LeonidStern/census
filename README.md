@@ -92,6 +92,7 @@ save("out", { home });
 - `set where used`: a page changed a part's look with its own class.
 - `IN 2 LOOKS`: one part and variant drawn two ways.
 - `no DS part`: a control none of your parts drew.
+- `rules broken`: a rule of your rules file broken on screen (roles, text, states, pairs, legacy below).
 - `layout problems`: cut text, overlaps, faint words, covered controls.
 - `layout`: each row, column, grid and filled box: the gaps between its children as drawn (`gaps 32 16` when they differ, in order; `(margins)`, `(free space)` when not `gap` makes them), its `pad`ding (top right bottom left, or shortened), and how its children sit (`justify between`, `items center`), with the children it holds. Diff says a change in any of them.
 - `align`: words set other than to the start of their box (`text end`, `text center`). A control's centred label isn't said.
@@ -123,11 +124,25 @@ To judge: a different part, variant, size or state (selected, disabled, open) is
   "radii": [4, 8, 16],
   "shadows": { "popover": "8px 16px 60px 0 rgba(0,0,0,0.8)" },
   "parts": ["Button", "Tabs", "Select"],
-  "ignore": "#intercom-frame"
+  "ignore": "#intercom-frame",
+
+  "roles": { "dialog": { "fill": "surface-2", "shadow": "popover", "radius": 12 }, "Tooltip": { "fill": "surface-3" } },
+  "text": ["white-100", "white-70", "white-50", "red-300"],
+  "states": { "hover": "wash white-5", "pressed": "wash white-10" },
+  "pairs": { "red-700": ["red-300"] },
+  "legacy": ["LegacyTabs"],
+  "contrast": 3.8
 }
 ```
 
-Every field is optional. `type` is size/weight/line-height in px.
+Every field is optional. `type` is size/weight/line-height in px. The second half says what the screen must look like, and each break is a line in `rules broken`:
+
+- `roles`: the fill, shadow and corner a box takes, by ARIA role (`dialog`, `menu`, `listbox`, `tooltip`) or by part name.
+- `text`: the colors text may use. Icons aside.
+- `states`: what hover, pressed or focus does to a control's fill. `wash white-5` lays that color over the resting fill, on neutral fills only (a colored fill keeps its own states); a plain color name means that color.
+- `pairs`: the text colors each fill takes.
+- `legacy`: parts that should be gone from the screen.
+- `contrast`: the lowest contrast for words (2 when left out).
 
 **You need none of it to start.** With no rules.json, Census holds the page to best practice instead: how many distinct values a group may hold at all. It is the only check that needs nothing written down first.
 
