@@ -257,6 +257,19 @@ if (chromium) {
     check(/button "Save" \[AppButton variant=primary\]/.test(t) && /button "Share" \[AppButton variant=ghost\]/.test(t), `Angular: a host's component and its inputs${/AppButton/.test(t) ? "" : `\n${t}`}`);
   }
   {
+    // a height a pixel off that no rule sets is the content's: one look, not two; a height a rule sets still is
+    const t = await read(async (page) => {
+      await page.evaluate(() => {
+        document.body.innerHTML = '<main>' + [18, 19, 18].map((h) => `<app-option><button class="btn" style="height:auto;padding:8px"><div style="height:${h}px">Pick</div></button></app-option>`).join("")
+          + '<app-chip><button class="btn">A</button></app-chip><app-chip><button class="btn" style="height:33px">B</button></app-chip></main>';
+        class AppOptionComponent {} class AppChipComponent {}
+        window.ng = { getComponent: (el) => (el.tagName === "APP-OPTION" ? new AppOptionComponent() : el.tagName === "APP-CHIP" ? new AppChipComponent() : null) };
+      });
+    });
+    const ok = /AppOption: h34-35 \(its content's\) r8/.test(t) && !/button 3[45]px ×\d near/.test(t) && /AppChip: h33 r8 [^\n]* \| h32 r8|AppChip: h32 r8 [^\n]* \| h33 r8/.test(t) && /button 3[23]px ×1 near 3[23]px \(same part\)/.test(t);
+    check(ok, `a content height a pixel off is one look (its content's); a height a rule sets stays two${ok ? "" : `\n${t.split("\n").filter((l) => /App|px ×/.test(l)).join("\n")}`}`);
+  }
+  {
     // layout: the gaps between children as drawn (from gap or from margins), padding, how children sit; text set to the end
     const t = await read(async (page) => {
       await page.evaluate(() => {

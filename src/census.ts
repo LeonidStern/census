@@ -948,7 +948,7 @@ const LOOK = ["height", "min-height", "border-top-left-radius", "background-colo
 const STYLE_KEYS: Record<string, string> = { height: "height", minHeight: "min-height", borderRadius: "border-top-left-radius", background: "background-color", backgroundColor: "background-color", color: "color", fontSize: "font-size", fontWeight: "font-weight", lineHeight: "line-height", letterSpacing: "letter-spacing", fontFamily: "font-family", boxShadow: "box-shadow", borderColor: "border-top-color" };
 
 function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement): Census {
-  type Seen = { n: number; at: string[]; el: Element; els?: Element[]; parts?: Set<string> };
+  type Seen = { n: number; at: string[]; el: Element; els?: Element[]; parts?: Set<string>; free?: Set<string> };
   const G = () => new Map<string, Seen>();
   const groups = { font: G(), type: G(), text: G(), fill: G(), line: G(), radius: G(), shadow: G(), field: G(), height: G(), layout: G(), align: G(), states: G(), used: G(), layer: G(), rules: G() };
   const infos = new Map<Element, PartInfo | null>();
@@ -1020,7 +1020,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   };
   // each part and variant: the looks it shows, by state; one part in two looks was changed where it's used
   const looks = new Map<string, { flag: boolean; m: Map<string, CensusLook> }>();
-  const seenLooks: { key: string; flag: boolean; st: string; shape: string; skin: string; say: string; h: number; hug: boolean; at: string; fiber: Fiber | null }[] = [];
+  const seenLooks: { key: string; flag: boolean; st: string; shape: string; skin: string; say: string; h: number; hug: boolean; free: boolean; at: string; fiber: Fiber | null }[] = [];
   const colorOf = (css: string) => { const c = parseColor(css); return c && c[3] >= 0.02 ? hex(c) : null; };
   const px = (v: string) => Math.round(parseFloat(v) * 10) / 10;
   const lineOf = (cs: CSSStyleDeclaration) => {
@@ -1308,7 +1308,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       const inner = Math.max(0, ...[...el.children].map((c) => c.getBoundingClientRect().height), own && cs.lineHeight !== "normal" ? parseFloat(cs.lineHeight) : 0);
       hug = !bg && !line && !parseFloat(cs.paddingTop) && !parseFloat(cs.paddingBottom) && inner >= r.height - 1;
       const kind = role ?? (el.tagName === "INPUT" ? `input ${(el as HTMLInputElement).type}` : el.tagName.toLowerCase());
-      if (!hug) { const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR); if (p) (s.parts ??= new Set()).add(p.key); }
+      if (!hug) { const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR); if (p) { (s.parts ??= new Set()).add(p.key); if (boxR === r && !sized(el)) (s.free ??= new Set()).add(p.key); } }
       controls.push({ el, r: boxR });
     }
     const no = stray(el, p), within = no ? null : inPart(el, p);
@@ -1324,7 +1324,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
         const shape = `${ctl ? (hug ? "h=content " : `h${h} `) : ""}r${corner.replaceAll(" ", "/")}`;
         const skin = `${shape} fill ${bg ?? "none"}${op < 0.995 ? ` at ${Math.round(op * 100)}%` : ""}`, say = `${skin}${tc ? ` text ${tc}` : ""}`;
         const key = no ? `${p?.key ?? el.tagName.toLowerCase()} (no DS part)` : within ? `${within.key} ${el.tagName.toLowerCase()}` : p!.key;
-        seenLooks.push({ key, flag: no ? false : within ? within.cand : p!.cand, st, shape, skin, say, h, hug, at: `${nameOf(el)}${where(el)} ${box(boxR)}${srcOf(within ?? p)}`, fiber: (within ?? p)?.fiber ?? null });
+        seenLooks.push({ key, flag: no ? false : within ? within.cand : p!.cand, st, shape, skin, say, h, hug, free: ctl && !hug && !sized(el), at: `${nameOf(el)}${where(el)} ${box(boxR)}${srcOf(within ?? p)}`, fiber: (within ?? p)?.fiber ?? null });
       }
     }
     // what its use site passed the part: classes and an inline style
@@ -1336,6 +1336,16 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     }
   }
 
+  // two heights a pixel apart that no rule sets are the content's (a longer line, a taller icon), not two looks
+  for (const x of seenLooks) {
+    if (!x.free || x.hug) continue;
+    const rest = x.say.slice(`h${x.h} `.length);
+    const twin = seenLooks.find((y) => y !== x && y.free && y.key === x.key && y.st === x.st && Math.abs(y.h - x.h) === 1 && y.say.slice(`h${y.h} `.length) === rest);
+    if (!twin) continue;
+    for (const y of seenLooks) if (y.free && y.key === x.key && y.st === x.st && Math.abs(y.h - x.h) <= 1 && y.say.slice(`h${y.h} `.length) === rest) {
+      y.hug = true; y.shape = `h=content ${y.shape.slice(`h${y.h} `.length)}`; y.skin = `h=content ${y.skin.slice(`h${y.h} `.length)}`; y.say = `h=content ${rest}`;
+    }
+  }
   // a part in more than one look whose uses differ in a prop that picks a look in some kits (color, status): those are variants too
   const perKey = new Map<string, typeof seenLooks>();
   for (const x of seenLooks) perKey.set(x.key, [...(perKey.get(x.key) ?? []), x]);
@@ -1645,7 +1655,9 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       } else if (g === "height") {
         const [ka, kh] = [k.replace(/ \d+px.*$/, ""), parseFloat(k.match(/(\d+)px/)![1])], [oa, oh] = [o.replace(/ \d+px.*$/, ""), parseFloat(o.match(/(\d+)px/)![1])];
         // only when the same part and variant shows both heights: other parts and sizes differ on purpose
-        if (ka === oa && kh !== oh && Math.abs(kh - oh) <= 4 && [...(me[1].parts ?? [])].some((x) => s.parts?.has(x))) return ` near ${oh}px (same part)`;
+        // a pixel apart where no rule sets either is the content's (a longer line), as in the looks
+        const free = Math.abs(kh - oh) === 1 && [...(me[1].free ?? [])].some((x) => s.free?.has(x));
+        if (ka === oa && kh !== oh && Math.abs(kh - oh) <= 4 && !free && [...(me[1].parts ?? [])].some((x) => s.parts?.has(x))) return ` near ${oh}px (same part)`;
       }
     }
     return "";
