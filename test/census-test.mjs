@@ -133,7 +133,7 @@ if (chromium) {
   });
   const after = await p2.evaluate((r) => window.census.data({ ...r, items: true }), rules);
   const d = C.diffCensus(before, after).join("\n");
-  check(/^census diff: 1 changed, 1 new, 1 gone \(1 of them controls, marked !\), [1-9]\d* only moved/.test(d) && /button "Share" in header .*: height button 36px→40px/.test(d) && /new \(1\)\n  button "Delete".*fill #ff0000 OFF/.test(d)
+  check(/^census diff: 2 changed, 1 new, 1 gone \(1 of them controls, marked !\), [1-9]\d* only moved/.test(d) && /button "Share" in header .*: height button 36px→40px/.test(d) && /header 0,0 \d+x\d+: layout row gap 8 pad 8→8 8 8 20/.test(d) && /new \(1\)\n  button "Delete".*fill #ff0000 OFF/.test(d)
     && /gone \(1\)\n  ! button "Bold" \(selected\)/.test(d) && /values new on the page \(\d+\)\n  fill #ff0000 OFF/.test(d)
     && /moved \(\d+, in \d+ groups?\)\n(.*\n)*  in header, \d+ moved \d+px right/.test(d), "a diff: what changed, came and went (a control that went marked !); moves grouped by where and how far") || console.log(d);
   // a second read with a live value in it: census diff leaves out what changes on its own
@@ -233,6 +233,21 @@ if (chromium) {
       });
     });
     check(/button "Save" \[AppButton variant=primary\]/.test(t) && /button "Share" \[AppButton variant=ghost\]/.test(t), `Angular: a host's component and its inputs${/AppButton/.test(t) ? "" : `\n${t}`}`);
+  }
+  {
+    // layout: the gaps between children as drawn (from gap or from margins), padding, how children sit; text set to the end
+    const t = await read(async (page) => {
+      await page.evaluate(() => {
+        document.body.innerHTML = '<nav id="tabs" style="display:flex;gap:4px;padding:8px 16px;align-items:center"><button class="btn">One</button><button class="btn">Two</button><button class="btn">Three</button></nav>'
+          + '<div id="bar" style="display:flex;justify-content:space-between"><button class="btn" style="margin-right:12px">Left</button><button class="btn">Right</button></div>'
+          + '<div id="rows" style="display:grid;grid-template-columns:1fr 120px;column-gap:16px"><span>BTC</span><span style="text-align:right">+1.2%</span></div>'
+          + '<div id="card" style="background:#1d1d1d;padding:16px"><h2 style="margin:0">Card</h2></div>';
+      });
+    });
+    const lay = t.split(/\n(?=\S)/).find((x) => x.startsWith("layout (")) ?? "", al = t.split(/\n(?=\S)/).find((x) => x.startsWith("align (")) ?? "";
+    const ok = /row gap 4 pad 8 16 items center ×1: #tabs [^\n]* holding 3: button "One", button "Two", button "Three"/.test(lay) && /row gap \d+ \(margins and free space\) justify between ×1: #bar/.test(lay)
+      && /grid 2 cols gap 0\/16 ×1: #rows/.test(lay) && /box pad 16 ×1: #card [^\n]* holding 1: h2 "Card"/.test(lay) && /text end ×1: span [^\n]*in #rows/.test(al) && /\n {2}every other text at the start of its box$/.test(al) && !/text center/.test(al);
+    check(ok, `layout: gaps as drawn (and from margins), padding, alignment, grids and filled boxes; text set to the end, not a button's centred label${ok ? "" : `\n${lay}\n${al}`}`);
   }
   await b.close();
 }

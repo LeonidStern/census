@@ -86,6 +86,8 @@ save("out", { home });
 - `IN 2 LOOKS`: one part and variant drawn two ways.
 - `no DS part`: a control none of your parts drew.
 - `layout problems`: cut text, overlaps, faint words, covered controls.
+- `layout`: each row, column, grid and filled box: the gaps between its children as drawn (`gaps 32 16` when they differ, in order; `(margins)`, `(free space)` when not `gap` makes them), its `pad`ding (top right bottom left, or shortened), and how its children sit (`justify between`, `items center`), with the children it holds. Diff says a change in any of them.
+- `align`: words set other than to the start of their box (`text end`, `text center`). A control's centred label isn't said.
 - `accessibility`: WCAG 2.2 AA, with its exceptions: text contrast (1.4.3; large text at 3:1, turned-off controls exempt, a field's hint included), focus visible (2.4.7; needs the capture's forcing), target size (2.5.8; under 24px fails only when too close to another target). `(unsure)`: computed styles can't decide (a gradient or image behind the words, a ring an ancestor draws on focus-within).
 - `max`: a group holding more distinct values than best practice asks for, with the rarest ones to drop under it. On by default when rules.json gives no values to check against (below).
 - In diff: `accessibility new`/`fixed`; `(now also …)` when a finding covers elements it didn't before; `max worse`/`better` when a group's count moved.
