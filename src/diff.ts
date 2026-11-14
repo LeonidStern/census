@@ -5,7 +5,7 @@ import type { Census, CensusItem } from "./census";
 import { diffFindings } from "./findings";
 
 const BOX = /-?\d+,-?\d+ \d+x\d+/g;
-const LOOK_ORDER = ["state", "height", "field", "radius", "fill", "line", "text", "type", "font", "shadow", "states", "set where used", "layer"];
+const LOOK_ORDER = ["state", "height", "field", "layout", "radius", "fill", "line", "text", "align", "type", "font", "shadow", "states", "set where used", "layer"];
 
 /** "button 32px" → "button 36px" says "button 32px→36px": the words both share are said once. */
 function one(a: string, b: string): string {

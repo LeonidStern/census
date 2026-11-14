@@ -266,6 +266,69 @@ function coverOf(el: Element, r: DOMRect): Element | null {
   }
   return null;
 }
+/** A text-align said by the writing direction: start, end, center or justify. */
+export function sayAlign(a: string, dir: string): string {
+  if (a === "center" || a === "-webkit-center") return "center";
+  if (a === "justify") return "justify";
+  const rtl = dir === "rtl";
+  return a === "end" || (a === "right" && !rtl) || (a === "left" && rtl) ? "end" : "start";
+}
+const SAY_JUSTIFY: Record<string, string> = { center: "center", "flex-end": "end", end: "end", right: "end", "space-between": "between", "space-around": "around", "space-evenly": "evenly" };
+const SAY_ITEMS: Record<string, string> = { center: "center", "flex-start": "start", start: "start", "flex-end": "end", end: "end", baseline: "baseline" };
+/** Pixel gaps as "8" when all alike, else in order, left to right or top down ("32 16 951 16"), or a range when many. */
+const sayGaps = (g: number[]) => { const lo = Math.min(...g), hi = Math.max(...g); return lo === hi ? `${lo}` : g.length <= 6 ? g.join(" ") : `${lo}-${hi}`; };
+/**
+ * How a box lays out its children, as a key: "row gap 8 pad 8 16 items center", "grid 3 cols gap 0/16", "column gaps
+ * 12-16 (margins)", or a filled box's padding, "box pad 16". The gaps are measured between the children as drawn, so
+ * margins count too, and the key says when they, not gap, make the space. Null for a box that lays nothing out.
+ */
+export function layoutOf(el: Element, cs: CSSStyleDeclaration, r: DOMRect, filled: boolean): { key: string; kids: string } | null {
+  if (r.width < 4 || r.height < 4) return null;
+  const flex = /flex/.test(cs.display), grid = /grid/.test(cs.display);
+  const pad = [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map((v) => Math.round(parseFloat(v) || 0));
+  const padded = pad.some(Boolean);
+  if (!flex && !grid && !(filled && padded)) return null;
+  const kids = [...el.children].map((c) => ({ c, b: c.getBoundingClientRect() })).filter(({ c, b }) => b.width > 0 && b.height > 0 && !/^(absolute|fixed)$/.test(getComputedStyle(c).position));
+  if (!kids.length || ((flex || grid) && kids.length < 2 && !(filled && padded))) return null;
+  const parts: string[] = [];
+  if (grid) {
+    const cols = cs.gridTemplateColumns.split(/\s+(?![^(]*\))/).filter(Boolean).length;
+    const rg = Math.round(parseFloat(cs.rowGap) || 0), cg = Math.round(parseFloat(cs.columnGap) || 0);
+    parts.push(`grid ${cols} col${cols > 1 ? "s" : ""}`);
+    if (rg || cg) parts.push(rg === cg ? `gap ${rg}` : `gap ${rg}/${cg}`);
+  } else if (flex) {
+    const col = /column/.test(cs.flexDirection);
+    parts.push(`${col ? "column" : "row"}${cs.flexWrap === "wrap" ? " wrap" : ""}`);
+    // the space between neighbours on one line, as drawn
+    const sorted = [...kids].sort((a, b) => (col ? a.b.top - b.b.top : a.b.left - b.b.left));
+    // and what makes it: gap, the children's margins, or free space the row hands out (justify, a growing child)
+    const set = Math.round(parseFloat(col ? cs.rowGap : cs.columnGap) || 0), gaps: number[] = [], from = new Set<string>();
+    const m = (e: Element, side: string) => parseFloat(getComputedStyle(e).getPropertyValue(`margin-${side}`)) || 0;
+    for (let i = 1; i < sorted.length; i++) {
+      const a = sorted[i - 1], b = sorted[i];
+      if (!col && Math.min(a.b.bottom, b.b.bottom) - Math.max(a.b.top, b.b.top) <= 0) continue; // on another line
+      const g = Math.round(col ? b.b.top - a.b.bottom : b.b.left - a.b.right), mg = Math.round(col ? m(a.c, "bottom") + m(b.c, "top") : m(a.c, "right") + m(b.c, "left"));
+      gaps.push(g);
+      if (set) from.add("gap");
+      if (mg > 0) from.add("margins");
+      if (g - set - mg > 1) from.add("free space");
+    }
+    if (gaps.length) {
+      if (Math.min(...gaps) < 0) parts.push("overlapping");
+      else if (Math.max(...gaps) > 0) parts.push(`${new Set(gaps).size > 1 ? "gaps" : "gap"} ${sayGaps(gaps)}${from.size && !(from.size === 1 && from.has("gap")) ? ` (${[...from].map((f) => (f === "gap" ? `gap ${set}` : f)).join(" and ")})` : ""}`);
+    }
+  } else parts.push("box");
+  if (padded) parts.push(`pad ${pad.every((p) => p === pad[0]) ? pad[0] : pad[0] === pad[2] && pad[1] === pad[3] ? `${pad[0]} ${pad[1]}` : pad.join(" ")}`);
+  if (flex) {
+    const j = SAY_JUSTIFY[cs.justifyContent], it = SAY_ITEMS[cs.alignItems];
+    if (j) parts.push(`justify ${j}`);
+    if (it) parts.push(`items ${it}`);
+    // children that grow take the row's free space: "full width" is a matter of these
+    const grow = kids.filter((k) => parseFloat(getComputedStyle(k.c).flexGrow) > 0).length;
+    if (grow) parts.push(grow === kids.length ? "children grow" : `${grow} of ${kids.length} grow`);
+  }
+  return { key: parts.join(" "), kids: `${kids.length}: ${kids.slice(0, 3).map((k) => nameOf(k.c)).join(", ")}${kids.length > 3 ? ", …" : ""}` };
+}
 /** Where two boxes cross, or null. */
 function cross(a: DOMRect, b: DOMRect): DOMRect | null {
   const l = Math.max(a.left, b.left), t = Math.max(a.top, b.top), r = Math.min(a.right, b.right), btm = Math.min(a.bottom, b.bottom);
@@ -869,7 +932,7 @@ const STYLE_KEYS: Record<string, string> = { height: "height", minHeight: "min-h
 function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement): Census {
   type Seen = { n: number; at: string[]; el: Element; els?: Element[]; parts?: Set<string> };
   const G = () => new Map<string, Seen>();
-  const groups = { font: G(), type: G(), text: G(), fill: G(), line: G(), radius: G(), shadow: G(), field: G(), height: G(), states: G(), used: G(), layer: G() };
+  const groups = { font: G(), type: G(), text: G(), fill: G(), line: G(), radius: G(), shadow: G(), field: G(), height: G(), layout: G(), align: G(), states: G(), used: G(), layer: G() };
   const infos = new Map<Element, PartInfo | null>();
   const part = (el: Element) => { let p = infos.get(el); if (p === undefined) { p = partInfo(el, rules.parts); infos.set(el, p); } return p; };
   // with rules.sources: " @ file:line" where the part that drew a place was used
@@ -1107,6 +1170,10 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       add(groups.font, cs.fontFamily.replace(/["']/g, "").replace(/\s*,\s*/g, ", "), el, r);
       const t = colorOf(cs.color);
       if (t && !warm) add(groups.text, t, el, r);
+      // words set other than to the start of their box (start is the rule, so it isn't said)
+      const ta = sayAlign(cs.textAlign, cs.direction);
+      // (a control centers its label by default: that isn't said either)
+      if (ta && ta !== "start" && !(ta === "center" && el.closest(CONTROL))) add(groups.align, `text ${ta}`, el, r);
       const per = tracking.get(px(cs.fontSize)) ?? new Map<number, Seen>();
       tracking.set(px(cs.fontSize), per);
       const had = per.get(ls);
@@ -1134,6 +1201,14 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     for (const ring of sh?.rings ?? []) add(groups.line, ring, el, r);
     if (corner !== "0" && (bg || line)) add(groups.radius, sayCorner(corner), el, r);
     if (sh?.rest.length) add(groups.shadow, sh.rest.join(", "), el, r);
+    // how a box lays out what is in it: a row, column or grid with the gaps between its children as drawn (and whether
+    // gap or margins make them), or a filled box with its padding; and how the children sit. What people mean by
+    // "more air", "line it up", "hug the edge"
+    const lay = layoutOf(el, cs, r, !!(bg || line));
+    if (lay) {
+      const s = add(groups.layout, lay.key, el, r);
+      if (s.at.length && !s.at[s.at.length - 1].includes(" holding ")) s.at[s.at.length - 1] += ` holding ${lay.kids}`;
+    }
     const role = el.getAttribute("role");
     if ((role && LAYER.test(role)) || (el === root && root !== document.body)) {
       // a pop-up's own box: the element with the role, else the filled box around it
@@ -1514,7 +1589,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   const made: CensusGroup[] = [];
   for (const [g, map] of Object.entries(groups)) {
     const list = [...map].sort((a, b) => b[1].n - a[1].n);
-    if (!list.length) continue;
+    if (!list.length && !(g === "align" && groups.type.size)) continue;
     const rows: CensusRow[] = list.map(([k, s]) => {
       let key = k, note = "";
       if (g === "font") { key = k === list[0][0] ? k : fontDiff(k, list[0][0]); note = whence(s.el, "font-family", true); }
@@ -1536,6 +1611,8 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       const at = rules.sources && (g === "used" || / OFF| near /.test(`${key}${note}`)) ? s.at.map((a, i) => { const e = s.els?.[i]; return e ? `${a}${srcOf(part(e) ?? ownerOf(e)) || hostSrc(e)}` : a; }) : s.at;
       return { key, n: s.n, note: note || undefined, at };
     });
+    // words at the start of their box aren't listed one by one: one row says so, so silence isn't read as unknown
+    if (g === "align") rows.push({ key: "every other text at the start of its box", n: 0, at: [] });
     if (g === "type") {
       // one size of text with letter-spacing both ways: a style that adds its own tracking
       for (const [size, per] of tracking) {
@@ -1544,7 +1621,8 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
         if (odd) rows.push({ key: `tracking at ${size}px: ${signs.map(([ls, s]) => `${ls > 0 ? "+" : ""}${ls} ×${s.n}`).join(", ")}`, n: 0, note: whence(odd[1].el, "letter-spacing", true) || undefined, at: odd[1].at });
       }
     }
-    made.push({ name: g === "used" ? "set where used" : g, what: g === "used" ? "what a part's use site changed about its look with a class or style of its own" : g === "layer" ? "pop-ups and their boxes" : undefined, rows });
+    const WHAT: Record<string, string> = { used: "what a part's use site changed about its look with a class or style of its own", layer: "pop-ups and their boxes", layout: "rows, columns, grids and filled boxes: the gaps between their children as drawn, their padding, how the children sit", align: "words set other than to the start of their box" };
+    made.push({ name: g === "used" ? "set where used" : g, what: WHAT[g], rows });
   }
   // parts: the same part and variant in more than one look first (changed where it's used)
   const partRows: CensusRow[] = [...looks].map(([key, l]) => ({ key, n: [...l.m.values()].reduce((n, x) => n + x.n, 0), at: [], flag: l.flag, looks: [...l.m.values()].map((x) => ({ ...x, skin: sayColors(x.skin), say: sayColors(x.say) })) }));
