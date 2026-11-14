@@ -37,22 +37,6 @@
     "Tab",
     "Input",
     "Card",
-    "LegacyText",
     "Link"
-  ],
-  "system": {
-    "textColors": [
-      "white-100",
-      "white-70",
-      "white-50",
-      "white-40",
-      "green-500",
-      "red-500",
-      "accent",
-      "link"
-    ],
-    "legacyParts": [
-      "LegacyText"
-    ]
-  }
+  ]
 }

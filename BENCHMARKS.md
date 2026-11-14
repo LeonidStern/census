@@ -41,7 +41,7 @@ A first run, on a made-up page, not the production app: `bench/preset/app.html` 
 | Traps flagged per read | 2.5 | 2.5 | 5 | 0 |
 | Other false claims per read | 1 | 1 | 3.5 | 1 |
 
-- The census readers read a capture that still had observations, since removed (below). Without them census marks 10 of the 12 itself: 8 as findings (rules broken, accessibility, layout problems) and 2 with `near` and `IN 2 LOOKS`; the other 2 (a hover step, one border) show only as values. The readers weren't run again.
+- The census readers read a capture that still had observations and a `system` block (legacy parts), both since removed. Census today marks 9 of the 12 itself: 4 as accessibility findings, 2 more `OFF` (a corner, the 9px type), 1 cut text, and 2 with `near` (Export's height, the panel's fill). The other 3 (a hover step, one border, the legacy part by its name) show only as values. The readers weren't run again.
 - The traps census readers flagged came from their own judgement, not the census: the dim large heading (it passes 3:1) in both runs.
 - Code tied only because the page is one static file with all its CSS. In the production app above, Opus with the code, the app and Playwright found 33% at five times the cost. One code reader stated a wrong contrast as sure (4.1:1 for 4.62:1).
 - Screenshots saw heights, a border and small text, but no hover, focus or exact value, and flagged most traps. The Playwright snapshot has no styles: its readers could check nothing.

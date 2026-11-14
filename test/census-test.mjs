@@ -36,46 +36,27 @@ check(both[6] === "  Button size=xs IN 2 LOOKS (all): h34 r6 fill surface-2 text
 const white = C.parseColor("rgb(255, 255, 255)"), black = C.parseColor("rgba(0, 0, 0, 1)");
 check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor("#ff000080")) === "[255,0,0,0.5019607843137255]" && JSON.stringify(C.parseColor("color(srgb 1 0 0 / 0.5)")) === "[255,0,0,0.5]", "colors read and compared");
 
-// ---------- Findings: levels, accept, merge, diff, init ----------
+// ---------- Findings: levels, lines, merge, diff ----------
 {
   const s = C.checkSetting;
   check(s({}, "contrast").level === null && s({ extends: "recommended@1" }, "contrast").level === "accessibility" && s({}, "off").level === "rule"
     && JSON.stringify(s({ checks: { contrast: ["rule", 3.8] } }, "contrast")) === '{"level":"rule","n":3.8}' && s({ extends: "recommended@1", checks: { focus: "off" } }, "focus").level === null
-    && JSON.stringify(s({ checks: { target: 28 } }, "target")) === '{"level":"accessibility","n":28}' && s({ extends: "recommended@2" }, "target").level === null && s({ extends: "recommended@1" }, "near").level === null,
-  "checks: the team's rules always on, the preset's only when asked, a level and a number from rules.checks");
+    && JSON.stringify(s({ checks: { target: 28 } }, "target")) === '{"level":"accessibility","n":28}' && s({ extends: "recommended@2" }, "target").level === null,
+  "checks: values off rules.json always, accessibility only when asked, a level and a number from rules.checks");
   const F = (id, level, key, more = {}) => ({ id, check: id.split("|")[0], level, key, n: 1, at: [`div 0,0 ${id.length}x1`], ...more });
   const page = (findings) => ({ head, groups: [], report: true, findings: findings.map((f) => ({ ...f, at: [...f.at] })) });
-  const fs = [F("off|fill|#123456", "rule", "fill #123456 OFF"), F("off|text|#222222", "rule", "text #222222 OFF"), F("legacy|Body", "rule", "legacy part Body on screen", { n: 3, part: "Body" }),
-    F("contrast|#777777 on #ffffff|", "accessibility", "contrast 4.48:1 muted on paper below 4.5", { value: "muted on paper" }), F("contrast|#999999 on #ffffff|", "accessibility", "contrast 2.85:1 gray on paper below 4.5", { unsure: true }),
-    F("target|IconButton|20x20", "accessibility", "target 20x20 under 24px", { value: "20x20", part: "IconButton", values: ['button "Bold"'] }), F("focus|Button", "accessibility", "focus not visible", { part: "Button" })];
-  const a = page(fs), lines = C.censusLines(a);
-  check(lines.includes("rules broken (3)") && lines.includes("  off the system: fill 1, text 1 (said OFF in their groups)") && lines.includes("  legacy part Body on screen ×3: div 0,0 11x1")
-    && lines.some((l) => l.startsWith("accessibility (4,")) && lines.indexOf("  contrast 2.85:1 gray on paper below 4.5 (unsure): div 0,0 28x1") > lines.indexOf("  contrast 4.48:1 muted on paper below 4.5: div 0,0 28x1")
-    && !lines.some((l) => /^observations/.test(l)), "findings as lines: a group a level, OFF summed, unsure last") || console.log(lines.join("\n"));
-  const acc = [{ rule: "legacy", part: "Body", why: "moving it in Q1" }, { rule: "target", value: "20x20px", page: "book", why: "dense toolbar" }, { rule: "contrast", value: "muted on paper" }, { rule: "focus", part: "Nothing", why: "none on screen" }];
-  const res = C.acceptFindings(a, acc, "home", "2026-11-14");
-  const al = C.censusLines(a);
-  check(a.findings[2].accepted === "moving it in Q1" && !a.findings[5].accepted && !a.findings[3].accepted && res.noWhy.length === 1 && res.unused.length === 2
-    && al.includes("rules broken (2)") && al.includes("  accepted ×1"), "accept: matched by rule and part, needs a why, a page entry only on its page, unused entries returned");
-  C.acceptFindings(a, acc, "book", "2026-11-14");
-  check(a.findings[5].accepted === "dense toolbar", "accept: a value matched normalized (20x20px is 20x20), on its own page");
-  C.acceptFindings(a, [{ rule: "legacy", part: "Body", why: "x", max: 2 }, { rule: "target", why: "y", until: "2026-01-01" }], "book", "2026-11-14");
-  check(!a.findings[2].accepted && a.findings[2].lapsed === "accepted up to 2, now 3" && a.findings[5].lapsed === "accept ran out 2026-01-01" && C.censusLines(a).includes("  legacy part Body on screen ×3 (accepted up to 2, now 3): div 0,0 11x1"), "accept lapses past max or after until, and says so");
-  const m = C.mergeCensus({ home: page(fs.slice(2, 4)), cart: page([{ ...fs[2], n: 2 }, fs[5]]) });
-  const legacyM = m.findings.find((f) => f.id === "legacy|Body");
-  check(legacyM.n === 5 && legacyM.note === " (all)" && legacyM.at[0] === "[home] div 0,0 11x1" && legacyM.at[1] === "[cart] div 0,0 11x1" && m.findings.find((f) => f.id === "target|IconButton|20x20").note === " (cart)", "findings merged by id: counts added, a place from each page, the pages said");
-  const before = page([fs[2], fs[3], fs[5]]), after = page([fs[3], fs[1], { ...fs[5], values: ['button "Bold"', 'button "Pin"'] }]);
-  const d = C.diffFindings(before, after);
-  check(d.lines.join("\n") === 'rules broken new (1)\n  text #222222 OFF: div 0,0 16x1\nrules broken fixed (1)\n  legacy part Body on screen ×3: div 0,0 11x1\naccessibility new (1)\n  target 20x20 under 24px (now also button "Pin"): div 0,0 23x1'
-    && d.newRules.length === 1 && d.newAccessibility.length === 1, "diff of findings: new and fixed by id, a finding that now covers another element") || console.log(d.lines.join("\n"));
-  const tokens = [{ name: "--gray-900", raw: "#1d1d1d", value: "#1d1d1d", used: true, color: "#1d1d1d" }, { name: "--bg-raised", raw: "var(--gray-900)", value: "#1d1d1d", used: true, color: "#1d1d1d" },
-    { name: "--white", raw: "#fff", value: "#fff", used: true, color: "#ffffff" }, { name: "--radius-md", raw: "0.5rem", value: "0.5rem", used: true }, { name: "--old", raw: "#f00", value: "#f00", used: false, color: "#ff0000" }];
-  const shot = { head, tokens, groups: [{ name: "fill", rows: [{ key: "#1d1d1d", n: 9, at: [] }, { key: "#1e1e1e", n: 1, note: " near #1d1d1d", at: [] }] }, { name: "type", rows: [{ key: "14/400/20", n: 9, at: [] }] }, { name: "radius", rows: [{ key: "8px", n: 3, at: [] }, { key: "13px", n: 1, at: [] }] },
-    { name: "parts", rows: [{ key: "Button size=sm", n: 3, at: [] }, { key: "button (no DS part)", n: 1, at: [] }] }] };
-  const dr = C.draftRules({ home: shot }, C.flattenTokens({ color: { brand: { $value: "#7a4fd6" }, link: { $value: "{color.brand}" } } }));
-  check(JSON.stringify(dr.rules) === '{"extends":"recommended@1","colors":{"gray-900":"#1d1d1d","white":"#ffffff","color-brand":"#7a4fd6"},"radii":[8],"parts":["Button"],"observed":{"colors":["#1e1e1e ×1"],"type":["14/400/20 ×9"],"radii":["13px ×1"]}}'
-    && dr.report.some((l) => /aliases .*bg-raised → gray-900.*color-link → color-brand/.test(l)) && dr.report.some((l) => /not seen on these pages: white, color-brand/.test(l)) && dr.report.includes("  [home] fill #1e1e1e ×1 near #1d1d1d"),
-  "init: tokens declared and used become the rules (primitives named, aliases listed); the rest of the screen goes under observed") || console.log(JSON.stringify(dr.rules), dr.report.join("\n"));
+  const fs = [F("off|fill|#123456", "rule", "fill #123456 OFF"), F("off|text|#222222", "rule", "text #222222 OFF"),
+    F("contrast|#777777 on #ffffff|", "accessibility", "contrast 4.48:1 muted on paper below 4.5"), F("contrast|#999999 on #ffffff|", "accessibility", "contrast 2.85:1 gray on paper below 4.5", { unsure: true }),
+    F("target|IconButton|20x20", "accessibility", "target 20x20 under 24px", { n: 2, values: ['button "Bold"'] })];
+  const lines = C.censusLines(page(fs));
+  check(lines.join("\n") === `${head}\naccessibility (3, WCAG 2.2 AA; unsure: computed styles can't decide)\n  target 20x20 under 24px ×2: div 0,0 23x1\n  contrast 4.48:1 muted on paper below 4.5: div 0,0 28x1\n  contrast 2.85:1 gray on paper below 4.5 (unsure): div 0,0 28x1`,
+    "findings as lines: accessibility only (values off the rules are said OFF in their groups), unsure last") || console.log(lines.join("\n"));
+  const m = C.mergeCensus({ home: page(fs.slice(0, 3)), cart: page([{ ...fs[2], n: 2 }, fs[4]]) });
+  const cm = m.findings.find((f) => f.id === "contrast|#777777 on #ffffff|");
+  check(cm.n === 3 && cm.note === " (all)" && cm.at[0] === "[home] div 0,0 28x1" && cm.at[1] === "[cart] div 0,0 28x1" && m.findings.find((f) => f.id === "target|IconButton|20x20").note === " (cart)", "findings merged by id: counts added, a place from each page, the pages said");
+  const d = C.diffFindings(page([fs[0], fs[2], fs[4]]), page([fs[1], { ...fs[4], values: ['button "Bold"', 'button "Pin"'] }]));
+  check(d.lines.join("\n") === 'accessibility new (1)\n  target 20x20 under 24px (now also button "Pin") ×2: div 0,0 23x1\naccessibility fixed (1)\n  contrast 4.48:1 muted on paper below 4.5: div 0,0 28x1'
+    && d.newRules.length === 1 && d.newRules[0].id === "off|text|#222222" && d.newAccessibility.length === 1, "diff of findings: accessibility new and fixed by id, a finding that now covers another element; new values off the rules returned for --fail-on") || console.log(d.lines.join("\n"));
 }
 
 // ---------- Source maps ----------
@@ -127,11 +108,11 @@ if (chromium) {
   const forced = pwLines(await pwCensus(p3, { rules })), byRules = pwLines(await pwCensus(p3, { rules, states: "rules" }));
   check(/hover fill #333333[^\n]*button "Edit"/.test(forced) && !/#333333/.test(byRules) && !(await p3.evaluate(() => document.querySelector("[data-census-f],#census-still"))),
     "Playwright helper: forced states in your own page, rules-only on request, nothing left behind") || console.log(forced);
-  // the checks: accessibility with WCAG's exceptions, the team's system rules
+  // the checks: accessibility with WCAG's exceptions
   {
     const p4 = await b.newPage({ viewport: { width: 1000, height: 500 } });
     await p4.goto(`file://${fileURLToPath(new URL("checks.html", import.meta.url))}`);
-    const sys = { colors: { ink: "#111111", muted: "#777777", paper: "#ffffff", "gray-300": "#999999" }, system: { textColors: ["ink"], legacyParts: ["Body"], pairs: [["paper", "ink"]] } };
+    const sys = { colors: { ink: "#111111", muted: "#777777", paper: "#ffffff", "gray-300": "#999999" } };
     const data = await pwCensus(p4, { rules: { ...sys, extends: "recommended@1" } }), fs = data.findings, t = pwLines(data);
     const f = (re) => fs.filter((x) => re.test(x.key) || re.test(x.at.join("; ")));
     const showAll = `\n${t.split("\n").filter((l) => !/^ {2}/.test(l) || /^ {2}(contrast|target|focus|text|hover|legacy|fill|Btn|DS|type|height|off)/.test(l)).slice(-40).join("\n")}`;
@@ -144,12 +125,10 @@ if (chromium) {
       `target size: two small buttons side by side fail, a small one alone passes by spacing, an inline link and a turned-off control are exempt${show}`);
     check(f(/^focus not visible/).length === 1 && /"No ring"/.test(f(/^focus not visible/)[0].at[0]), `focus visible: forced focused, a control that changes nothing (outline: none) is a finding; a default ring is not${show}`);
     check(!fs.some((x) => x.level !== "rule" && x.level !== "accessibility"), "no observations: only the team's rules and accessibility");
-    check(fs.find((x) => x.id === "legacy|Body")?.level === "rule" && f(/^text muted not a text color/).length === 1 && f(/^fill paper with text muted \(system\.pairs: ink\)$/).length === 1 && !f(/^fill paper with text #cccccc/).length,
-      `system rules: a legacy part, a text color, a pair (a turned-off control exempt), each a rule broken${show}`);
     const plainData = await pwCensus(p4, { rules: { colors: sys.colors } });
     check(!plainData.findings.some((x) => x.level !== "rule") && plainData.findings.some((x) => x.check === "off") && !/^(rules broken|accessibility|observations) \(/m.test(pwLines(plainData)) && !plainData.report,
-      "without extends, checks, system or accept: the findings are data only (for diff and --fail-on); the text is as it always was");
-    const team = await pwCensus(p4, { rules: { ...sys, checks: { contrast: ["rule", 3.8], once: "off" } } });
+      "without extends or checks: the findings are data only (for diff and --fail-on); the text is as it always was");
+    const team = await pwCensus(p4, { rules: { ...sys, checks: { contrast: ["rule", 3.8] } } });
     const tc = team.findings.filter((x) => x.check === "contrast");
     check(tc.length === 2 && tc.every((x) => x.level === "rule") && /below 3\.8 \(team floor; WCAG 1\.4\.3 asks 4\.5\)/.test(tc[0].key) && !team.findings.some((x) => x.check === "once"),
       "checks: contrast as a rule at the team's floor, which the line says isn't WCAG's");
@@ -238,25 +217,21 @@ if (chromium) {
     check(ok, `capture: a hover a row passes down through a variable shows only when forced${ok ? "" : `\n${sf}`}`);
     // the checks through the CLI: --extends, --fail-on and its exit code, then census init from that capture
     const { writeFileSync: wf } = await import("node:fs");
-    const crules = `${dir}/checks-rules.json`, accept = [{ rule: "focus", part: "Nothing", why: "gone" }, { rule: "legacy", part: "Body", why: "x" }];
-    wf(crules, JSON.stringify({ colors: { ink: "#111111", muted: "#777777", paper: "#ffffff" }, system: { legacyParts: ["Body"] }, accept }));
+    const crules = `${dir}/checks-rules.json`;
+    wf(crules, JSON.stringify({ colors: { ink: "#111111", muted: "#777777", paper: "#ffffff" } }));
     const page = `p=${new URL("checks.html", import.meta.url).href}`, base = [cli, "capture", "--rules", crules, "--wait", "200", "--once", "--extends", "recommended@1"];
     const exit = (args) => { try { execFileSync("node", args, { stdio: "pipe", timeout: 60000 }); return 0; } catch (e) { return e.status; } };
     const okRun = exit([...base, "--out", `${dir}/c1`, page]), failRun = exit([...base, "--fail-on", "accessibility", "--out", `${dir}/c2`, page]), badRun = exit([...base, "--fail-on", "everything", "--out", `${dir}/c3`, page]);
     const ct = readFileSync(`${dir}/c1/p.txt`, "utf8");
-    check(okRun === 0 && failRun === 1 && badRun === 2 && /^accessibility \(\d+/m.test(ct) && /focus not visible \(2\.4\.7\)[^\n]*"No ring"/.test(ct) && (ct.match(/^ {2}accepted ×1$/gm) ?? []).length === 1 && !/^observations/m.test(ct),
-      `capture with --extends: the checks in the text, accepted ones counted; --fail-on exits 1 on findings, 2 on a bad level (${okRun}, ${failRun}, ${badRun})${/focus not visible/.test(ct) ? "" : `\n${ct.slice(-1500)}`}`);
-    const draft = `${dir}/draft.json`, i1 = exit([cli, "init", "--from", `${dir}/c1/census.json`, "--out", draft]), i2 = exit([cli, "init", "--from", `${dir}/c1/census.json`, "--out", draft]);
-    const dj = JSON.parse(readFileSync(draft, "utf8"));
-    check(i1 === 0 && i2 === 2 && dj.extends === "recommended@1" && dj.colors.ink === "#111111" && dj.colors["gray-300"] === "#999999" && !dj.colors["unused-red"] && JSON.stringify(dj.radii) === "[8]" && dj.shadows["shadow-pop"] && dj.observed.type.length >= 3,
-      "init: the page's declared and used tokens become the rules, the rest goes under observed; it won't overwrite without --force") || console.log(JSON.stringify(dj));
+    check(okRun === 0 && failRun === 1 && badRun === 2 && /^accessibility \(\d+/m.test(ct) && /focus not visible \(2\.4\.7\)[^\n]*"No ring"/.test(ct) && !/^(observations|rules broken|accepted)/m.test(ct),
+      `capture with --extends: the checks in the text; --fail-on exits 1 on findings, 2 on a bad level (${okRun}, ${failRun}, ${badRun})${/focus not visible/.test(ct) ? "" : `\n${ct.slice(-1500)}`}`);
     // a change: the muted text darker (a contrast fixed, a new value off the system) and a second small button by the first
     const html = readFileSync(new URL("checks.html", import.meta.url), "utf8").replace("--muted: #777777", "--muted: #555555").replace('aria-label="Close"></button>', 'aria-label="Close"></button><button class="alone" style="left:618px" aria-label="Pin"></button>');
     wf(`${dir}/after.html`, html);
     exit([...base, "--out", `${dir}/d2`, `p=file://${dir}/after.html`]);
     let dout = "", dexit = 0;
     try { dout = execFileSync("node", [cli, "diff", "--fail-on", "new-accessibility", `${dir}/c1/census.json`, `${dir}/d2/census.json`], { stdio: "pipe", timeout: 60000 }).toString(); } catch (e) { dexit = e.status; dout = e.stdout.toString(); }
-    check(dexit === 1 && /accessibility new \(1\)\n {2}target 16x16 [^\n]*\(now also button "Close", button "Pin"\)/.test(dout) && /accessibility fixed \(1\)\n {2}contrast 4\.48:1 muted on paper/.test(dout) && /rules broken new \(1\)\n {2}text #555555 OFF/.test(dout),
+    check(dexit === 1 && /accessibility new \(1\)\n {2}target 16x16 [^\n]*\(now also button "Close", button "Pin"\)/.test(dout) && /accessibility fixed \(1\)\n {2}contrast 4\.48:1 muted on paper/.test(dout) && /values new on the page[^\n]*\n {2}text #555555 OFF/.test(dout),
       "diff: findings new and fixed by id (a finding that now covers more elements says which), and --fail-on new-accessibility exits 1") || console.log(dout);
   }
 }
