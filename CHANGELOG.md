@@ -6,6 +6,8 @@ Covered by that promise: the census and diff text, rules.json, the CLI's flags a
 
 ## Unreleased
 
+- **Content heights**: two uses of a part a pixel apart in height, where no rule sets either height (a longer line, a taller icon), read as one look, `h134-135 (its content's)`, and no longer as `IN 2 LOOKS` or `near 134px (same part)`. A height a rule sets still counts each pixel.
+
 ## 0.3.0 — 2026-11-14
 
 **Breaking: the max lines read differently**, which by the promise above makes this a minor version, not a patch. The ids (`max|fill`) are the same, but `n` for type now counts sizes, so a `--fail-on max-worse` diff across this upgrade compares two different units: capture main again after upgrading.
