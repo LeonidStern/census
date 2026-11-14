@@ -1,12 +1,11 @@
 // Findings: what the census says is wrong or worth a look, each with an id that stays the same between captures, so
-// accept, diff and exit codes can tell one finding from another. Three levels, kept apart for the reader:
+// accept, diff and exit codes can tell one finding from another. Two levels, kept apart for the reader:
 //  - rule: breaks the team's own rules (rules.json): a value off the system, a legacy part, a text color or pair not allowed.
 //  - accessibility: a WCAG 2.2 AA criterion, with its exceptions; "unsure" where computed styles can't decide.
-//  - observation: evidence of drift (near-duplicates, values used once, hover done two ways). Never an order.
 // Pure: runs in Node or the page.
 import type { Census } from "./census";
 
-export type Level = "rule" | "accessibility" | "observation";
+export type Level = "rule" | "accessibility";
 export type Finding = {
   /** check|subject: no counts or boxes, so the same finding has the same id in two captures */
   id: string;
@@ -17,7 +16,7 @@ export type Finding = {
   n: number;
   note?: string;
   at: string[];
-  /** the units diff compares inside one finding (values used once, the heights a part shows) */
+  /** the units diff compares inside one finding (the elements it covers) */
   values?: string[];
   /** what accept matches on */
   value?: string;
@@ -44,14 +43,6 @@ export const CHECKS: Record<string, { level: Level; preset: boolean; what: strin
   contrast: { level: "accessibility", preset: true, what: "text contrast, WCAG 1.4.3" },
   focus: { level: "accessibility", preset: true, what: "focus visible, WCAG 2.4.7" },
   target: { level: "accessibility", preset: true, what: "target size, WCAG 2.5.8" },
-  near: { level: "observation", preset: true, what: "a value one step from a more used one" },
-  once: { level: "observation", preset: true, what: "values seen on one element only" },
-  hover: { level: "observation", preset: true, what: "one part's hover done two ways (wash and step)" },
-  quiet: { level: "observation", preset: true, what: "a hover that changes nothing where the part's others change" },
-  "small-text": { level: "observation", preset: true, what: "text under 10px (desktop) or 11px (phone), Apple's minimums" },
-  "light-text": { level: "observation", preset: true, what: "small text lighter than weight 400" },
-  matrix: { level: "observation", preset: true, what: "a part drawn at more heights than its variants" },
-  adoption: { level: "observation", preset: true, what: "the share of controls drawn by DS parts" },
 };
 
 export const PRESETS = ["recommended@1"];
@@ -105,15 +96,15 @@ export function acceptFindings(c: Census, accept: AcceptEntry[] | undefined, pag
   return { unused: list.filter((e) => e.why?.trim() && !used.has(e)), noWhy };
 }
 
-const HEAD: Record<Level, string> = { rule: "rules broken", accessibility: "accessibility", observation: "observations" };
-const WHAT: Record<Level, string> = { rule: "the team's rules", accessibility: "WCAG 2.2 AA; unsure: computed styles can't decide", observation: "evidence, not orders: a reason to look, never alone a reason to change code" };
+const HEAD: Record<Level, string> = { rule: "rules broken", accessibility: "accessibility" };
+const WHAT: Record<Level, string> = { rule: "the team's rules", accessibility: "WCAG 2.2 AA; unsure: computed styles can't decide" };
 
 /** The findings as lines: one group a level, accepted ones counted at its end. Value-off-the-system findings are said in their own groups, so here they are summed. */
 export function findingLines(c: Census, max = 12): string[] {
   const all = c.findings;
   if (!all) return [];
   const out: string[] = [];
-  for (const level of ["rule", "accessibility", "observation"] as Level[]) {
+  for (const level of ["rule", "accessibility"] as Level[]) {
     const fs = all.filter((f) => f.level === level), shown = fs.filter((f) => !f.accepted), kept = fs.length - shown.length;
     if (!fs.length) continue;
     const off = shown.filter((f) => f.check === "off"), own = shown.filter((f) => f.check !== "off");
@@ -149,30 +140,28 @@ export function mergeFindings(pages: Record<string, Census>): Finding[] | undefi
   }
   return [...by.values()].map(({ f, pages: ps, accepted }) => {
     if (!accepted) delete f.accepted;
-    // a finding a page counts by its own values (used once, adoption) is said per page when the pages differ
     return { ...f, note: `${f.note ?? ""} (${ps.length === names.length && names.length > 1 ? "all" : ps.join("+")})` };
   });
 }
 
-/** What changed in the findings between two captures: new and fixed per level; for observations only what is new. */
+/** What changed in the findings between two captures: new and fixed per level. */
 export function diffFindings(before: Census, after: Census, max = 40): { lines: string[]; newRules: Finding[]; newAccessibility: Finding[] } {
   const a = new Map((before.findings ?? []).filter((f) => !f.accepted).map((f) => [f.id, f])), b = new Map((after.findings ?? []).filter((f) => !f.accepted).map((f) => [f.id, f]));
   const line = (f: Finding, extra = "") => `  ${f.key}${extra}${f.n > 1 ? ` ×${f.n}` : ""}${f.unsure ? " (unsure)" : ""}${f.at[0] ? `: ${f.at[0]}` : ""}`;
   const lines: string[] = [], newRules: Finding[] = [], newAccessibility: Finding[] = [];
   const capped = (l: string[]) => (l.length > max ? [...l.slice(0, max), `  ... ${l.length - max} more`] : l);
   if (!before.findings && !after.findings) return { lines, newRules, newAccessibility };
-  for (const level of ["rule", "accessibility", "observation"] as Level[]) {
+  for (const level of ["rule", "accessibility"] as Level[]) {
     const nw: string[] = [], fixed: string[] = [];
     for (const [id, f] of b) {
       if (f.level !== level) continue;
       const was = a.get(id);
       if (!was) { nw.push(line(f)); if (level === "rule") newRules.push(f); if (level === "accessibility") newAccessibility.push(f); continue; }
-      // the same finding with new units in it (a new height of a part, a new value used once)
+      // the same finding covering elements it didn't (a second small button next to the first)
       const more = (f.values ?? []).filter((v) => !(was.values ?? []).includes(v));
       if (more.length) { nw.push(line(f, ` (now also ${more.slice(0, 6).join(", ")})`)); if (level === "rule") newRules.push(f); if (level === "accessibility") newAccessibility.push(f); }
-      else if (f.check === "adoption" && f.value !== was.value) nw.push(`  ${f.key} (was ${was.value})`);
     }
-    if (level !== "observation") for (const [id, f] of a) if (f.level === level && !b.has(id)) fixed.push(line(f));
+    for (const [id, f] of a) if (f.level === level && !b.has(id)) fixed.push(line(f));
     if (nw.length) lines.push(`${HEAD[level]} new (${nw.length})`, ...capped(nw));
     if (fixed.length) lines.push(`${HEAD[level]} fixed (${fixed.length})`, ...capped(fixed));
   }

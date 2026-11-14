@@ -35,7 +35,7 @@ const USAGE = `census capture [options] <url | name=url>...
                       that matter (set where used, values off the system, a part in two looks). Needs a dev
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
-  --extends <preset>  turn on the accessibility checks and observations (recommended@1); rules.json can say it too
+  --extends <preset>  turn on the accessibility checks (recommended@1); rules.json can say it too
   --fail-on <levels>  exit 1 when a finding not accepted is at these levels: rules, accessibility (comma-separated;
                       unsure accessibility findings never fail). Without it a capture exits 0 whatever it finds
 
@@ -44,7 +44,7 @@ census diff [--live <before2/census.json>] <before/census.json> <after/census.js
   elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
-  Then findings: rule breaks and accessibility new and fixed, observations only new.
+  Then findings: rule breaks and accessibility, new and fixed.
   --fail-on new-rules,new-accessibility: exit 1 when the after capture has findings at those levels that the
   before capture didn't (what CI wants: a PR is judged only on what it added)
 

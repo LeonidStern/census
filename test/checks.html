@@ -14,12 +14,6 @@
   .alone { position: absolute; left: 600px; top: 300px; width: 16px; height: 16px; padding: 0; border: 0; background: #e0e0e0; }
   .nofocus { background: none; border: 1px solid var(--ink); height: 32px; }
   .nofocus:focus, .nofocus:focus-visible { outline: none; }
-  .tiny { font-size: 9px; line-height: 12px; }
-  .thin { font-size: 12px; font-weight: 300; }
-  .chip { height: 28px; border: 0; background: transparent; color: var(--ink); }
-  .chip:hover { background: rgba(0,0,0,.05); }
-  .chip.step:hover { background: #eeeeee; }
-  .b32 { height: 32px; } .b30 { height: 30px; }
   .pop { box-shadow: var(--shadow-pop); border-radius: var(--radius-md); }
 </style></head>
 <body>
@@ -32,13 +26,6 @@
   <button class="alone" aria-label="Close"></button>
   <p>Read the <a href="#terms">terms</a> before you start.</p>
   <button class="nofocus">No ring</button>
-  <span class="tiny">Fine print</span>
-  <span class="thin">Thin words</span>
-  <div>
-    <button class="chip" data-part="Chip">One</button><button class="chip" data-part="Chip">Two</button><button class="chip" data-part="Chip">Three</button>
-    <button class="chip step" data-part="Chip">Four</button>
-  </div>
   <div data-part="Body">Old body text</div>
-  <button class="b32" data-part="Btn">Tall</button><button class="b30" data-part="Btn">Short</button>
   <div class="pop">A raised box</div>
 </body></html>

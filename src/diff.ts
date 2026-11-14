@@ -162,7 +162,7 @@ export function diffCensus(before: Census, after: Census, max = 40, live?: Censu
   const np = [...pb].filter(([k]) => !pa.has(k)).map(([, v]) => `  ${v}`), fp = [...pa].filter(([k]) => !pb.has(k)).map(([, v]) => `  ${v}`);
   if (np.length) out.push(`layout problems new (${np.length})`, ...cap(np, max));
   if (fp.length) out.push(`layout problems gone (${fp.length})`, ...cap(fp, max));
-  // findings by id: rule breaks and accessibility new and fixed, observations only new
+  // findings by id: rule breaks and accessibility, new and fixed
   if (before.report || after.report) out.push(...diffFindings(before, after, max).lines);
   return out;
 }

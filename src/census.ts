@@ -288,7 +288,7 @@ function cross(a: DOMRect, b: DOMRect): DOMRect | null {
  * need a fix (set where used, off the system, a part in two looks).
  * `items`: also each element's own look (Census.items), for diffCensus, and the custom properties the page declares
  * (Census.tokens), for census init.
- * `extends`: "recommended@1" turns on the accessibility checks and the observations (findings.ts CHECKS); `checks`
+ * `extends`: "recommended@1" turns on the accessibility checks (findings.ts CHECKS); `checks`
  * sets one check's level and number ("off", "rule", "advice", a number, or [level, number]). `system`: the team's own
  * rules about what the screen shows: `textColors` (the tokens text may use), `legacyParts` (parts that should no longer
  * render), `pairs` ([fill token, text token] pairs a fill may carry). `accept`: findings the team keeps, each with a why.
@@ -1026,7 +1026,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   };
   // the checks asked for (findings.ts CHECKS), and what they find, kept raw (hex, px) until the tokens are known
   const want = (check: string) => checkSetting(rules, check);
-  const W = { contrast: want("contrast"), small: want("small-text"), light: want("light-text"), legacy: want("legacy"), pair: want("pair") };
+  const W = { contrast: want("contrast"), legacy: want("legacy"), pair: want("pair") };
   type Hit = { n: number; at: string[]; el: Element; r: DOMRect; unsure?: boolean; min?: number; big?: boolean; fg?: string; bg?: string; what?: string; names?: string[] };
   const hits = new Map<string, Hit>();
   const hit = (id: string, el: Element, r: DOMRect, more: Partial<Hit> = {}) => {
@@ -1074,7 +1074,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
     const had = hits.get(id);
     hit(id, el, r, { min: ratio, big: large, fg, bg, what, ...(had && (had.n >= 3 || !had.unsure) ? {} : { unsure: unsureText(el, cs, r) }) });
   };
-  const pairs = new Map<string, number>(), partHeights = new Map<string, Map<number, { n: number; at: string }>>();
+  const pairs = new Map<string, number>();
   const placeholders = new Map<string, number>(), icons = new Map<Element, Set<string>>(), tracking = new Map<number, Map<number, Seen>>();
   let moving = 0, hot = 0, warm: Element | null = null;
   const controls: { el: Element; r: DOMRect }[] = [];
@@ -1120,12 +1120,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       tracking.set(px(cs.fontSize), per);
       const had = per.get(ls);
       if (had) had.n++; else per.set(ls, { n: 1, at: [place(el, r)], el });
-      const size = parseFloat(cs.fontSize), weight = parseFloat(cs.fontWeight) || 400;
       if (W.contrast.level && !warm && !turnedOff(el) && !el.closest("svg,[role=img]")) contrastOf(el, cs.color, cs, r, "");
-      // Apple's minimums: 10 pt on macOS, 11 pt on iOS (a CSS px is drawn at 1 pt)
-      const floor = W.small.n ?? (innerWidth >= 768 ? 10 : 11);
-      if (W.small.level && size < floor) hit(`small-text|${px(cs.fontSize)}`, el, r);
-      if (W.light.level && weight < 400 && size < 14) hit(`light-text|${px(cs.fontSize)}/${cs.fontWeight}`, el, r);
       if (W.pair.level && rules.system?.pairs?.length && t && !warm && !turnedOff(el)) { const k = `${hex(seeing.back(el))} ${t}`; pairs.set(k, (pairs.get(k) ?? 0) + 1); if (!hits.has(`pairat|${k}`)) hit(`pairat|${k}`, el, r); }
     }
     // a field's hint is text too (WCAG 1.4.3 covers it)
@@ -1180,15 +1175,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       const inner = Math.max(0, ...[...el.children].map((c) => c.getBoundingClientRect().height), own && cs.lineHeight !== "normal" ? parseFloat(cs.lineHeight) : 0);
       hug = !bg && !line && !parseFloat(cs.paddingTop) && !parseFloat(cs.paddingBottom) && inner >= r.height - 1;
       const kind = role ?? (el.tagName === "INPUT" ? `input ${(el as HTMLInputElement).type}` : el.tagName.toLowerCase());
-      if (!hug) {
-        const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR);
-        if (p) {
-          (s.parts ??= new Set()).add(p.key);
-          const hs = partHeights.get(p.key) ?? new Map<number, { n: number; at: string }>(), h = Math.round(boxR.height), had = hs.get(h);
-          partHeights.set(p.key, hs);
-          if (had) had.n++; else hs.set(h, { n: 1, at: place(el, boxR) });
-        }
-      }
+      if (!hug) { const s = add(groups.height, `${kind} ${Math.round(boxR.height)}px${boxR === r ? "" : " (field box)"}`, el, boxR); if (p) (s.parts ??= new Set()).add(p.key); }
       controls.push({ el, r: boxR });
     }
     const no = stray(el, p), within = no ? null : inPart(el, p);
@@ -1429,22 +1416,6 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       if (near) hit(`target|${part(s.el)?.key ?? s.el.getAttribute("role") ?? s.el.tagName.toLowerCase()}|${Math.round(s.hit.width)}x${Math.round(s.hit.height)}`, s.el, s.r);
     }
   }
-  // how each control's hover changes it: a wash (a see-through layer or overlay over its fill), a step (a new solid
-  // fill), something else (text, line), or nothing; compared within one part and variant, or one kind of control and fill
-  const hoverW = want("hover"), quietW = want("quiet");
-  const hovers = new Map<string, Record<"wash" | "step" | "other" | "none", { el: Element; r: DOMRect }[]>>();
-  if (hoverW.level || quietW.level) for (const c of controls) {
-    // a selected or open control wears that state's look, hovered or not: it isn't compared with the others
-    if (turnedOff(c.el) || getComputedStyle(c.el).pointerEvents === "none" || /selected|open/.test(stateOf(c.el))) continue;
-    const said = statesOf(c.el).filter((s) => s.startsWith("hover "));
-    const fill = said.find((s) => /^hover (overlay )?fill /.test(s)), h = fill?.split(" ").pop() ?? "";
-    const how = fill ? (/overlay/.test(fill) || /^#[0-9a-f]{8}$/.test(h) ? "wash" : "step") : said.length ? "other" : "none";
-    const p = part(c.el), kind = c.el.getAttribute("role") ?? c.el.tagName.toLowerCase();
-    const key = p ? `[${p.key}]` : `${kind} with ${colorOf(getComputedStyle(c.el).backgroundColor) ? "a fill" : "no fill"}`;
-    const g = hovers.get(key) ?? { wash: [], step: [], other: [], none: [] };
-    hovers.set(key, g);
-    g[how].push(c);
-  }
 
   // set where used: a bare element with one class of the use site, next to one with none, says what the class changes;
   // it counts when the part's element shows the same value (the part passed it on)
@@ -1596,18 +1567,13 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
   const findings: Finding[] = [];
   const push = (f: Omit<Finding, "level">, level: Level | null) => { if (level) findings.push({ ...f, level }); };
   const plain = (note?: string) => (note ?? "").replace(/ \((from|via) .*$/, "");
-  const offW = want("off"), nearW = want("near"), onceW = want("once");
+  const offW = want("off");
   for (const g of made) {
     if (/^(parts|closed|left out|layout problems)$/.test(g.name)) continue;
-    const once: CensusRow[] = [];
     for (const r of g.rows) {
       const said = `${r.key}${r.note ?? ""}`;
       if (/ OFF/.test(said)) push({ id: `off|${g.name}|${r.key}`, check: "off", key: `${g.name} ${r.key}${plain(r.note)}`, n: r.n, at: r.at.slice(0, 1), value: r.key.split(" ")[0] }, offW.level);
-      else if (/ near /.test(said)) push({ id: `near|${g.name}|${r.key}`, check: "near", key: `${g.name} ${r.key}${plain(r.note)}`, n: r.n, at: r.at.slice(0, 1), value: r.key }, nearW.level);
-      if (r.n === 1 && /^(type|radius|height|shadow|field)$/.test(g.name)) once.push(r);
     }
-    // only where a group has enough values for one-offs to say something
-    if (once.length && g.rows.length >= 4) push({ id: `once|${g.name}`, check: "once", key: `${g.name} seen on one element only: ${once.slice(0, 8).map((r) => r.key).join(", ")}${once.length > 8 ? ", …" : ""} (${once.length} of ${g.rows.length} values)`, n: 1, at: once.slice(0, 2).map((r) => r.at[0]).filter(Boolean), values: once.map((r) => r.key) }, onceW.level);
   }
   for (const r of partRows) if (/\(no DS part\)/.test(r.key)) push({ id: `no-part|${r.key}`, check: "no-part", key: r.key, n: r.n, at: (r.looks ?? []).flatMap((l) => l.at).slice(0, 2), part: r.key.split(" ")[0] }, want("no-part").level);
   // text in a token the team doesn't use for text
@@ -1636,31 +1602,7 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       push({ id, check, key: `contrast ${h.min!.toFixed(2)}:1 ${h.what}${nm(h.fg!)} on ${nm(h.bg!)}${h.big ? " (large text)" : ""} below ${floor}${crit}`, n: h.n, at: h.at, unsure: h.unsure, value: `${nm(h.fg!)} on ${nm(h.bg!)}`, values: h.names }, W.contrast.level);
     } else if (check === "focus") push({ id, check, key: `focus not visible (2.4.7): ${a} changes nothing focused`, n: h.n, at: h.at, unsure: h.unsure, part: a, values: h.names }, focusW.level);
     else if (check === "target") push({ id, check, key: `target ${b} under ${targetW.n ?? 24}px, too close to another (2.5.8): ${a}`, n: h.n, at: h.at, part: a, value: b, values: h.names }, targetW.level);
-    else if (check === "small-text") push({ id, check, key: `text ${a}px under ${W.small.n ?? (innerWidth >= 768 ? 10 : 11)}px (Apple's minimum at this width)`, n: h.n, at: h.at, value: a }, W.small.level);
-    else if (check === "light-text") push({ id, check, key: `text ${a.split("/")[0]}px at weight ${a.split("/")[1]} (light weights at small sizes are hard to read)`, n: h.n, at: h.at, value: a }, W.light.level);
     else if (check === "legacy") push({ id, check, key: `legacy part ${a} on screen (system.legacyParts)`, n: h.n, at: h.at, part: a }, W.legacy.level);
-  }
-  for (const [key, g] of hovers) {
-    const w = g.wash.length, s = g.step.length, changes = w + s + g.other.length;
-    if (w && s) { const few = w < s ? g.wash : g.step; push({ id: `hover|${key}`, check: "hover", key: `hover in ${key}: wash ×${w}, step ×${s}; the ${w < s ? "wash" : "step"} ones`, n: 1, at: few.slice(0, 3).map((c) => place(c.el, c.r)), part: key }, hoverW.level); }
-    if (g.none.length && changes >= 2 && g.none.length < changes) push({ id: `quiet|${key}`, check: "quiet", key: `hover changes nothing in ${key}, where ${changes} others change`, n: g.none.length, at: g.none.slice(0, 3).map((c) => place(c.el, c.r)), part: key }, quietW.level);
-  }
-  // a part drawn at more heights than the variants it was used with
-  const matrixW = want("matrix"), byName = new Map<string, [string, Map<number, { n: number; at: string }>][]>();
-  for (const [k, hs] of partHeights) { const name = k.split(" ")[0]; byName.set(name, [...(byName.get(name) ?? []), [k, hs]]); }
-  for (const [name, keys] of byName) {
-    const heights = new Set(keys.flatMap(([, hs]) => [...hs.keys()]));
-    if (heights.size <= keys.length) continue;
-    const split = keys.filter(([, hs]) => hs.size > 1).sort((a, b) => b[1].size - a[1].size).slice(0, 2);
-    const say = split.map(([k, hs]) => `${k.slice(name.length).trim() || "(no variant)"}: ${[...hs].sort((a, b) => b[1].n - a[1].n).map(([h, x]) => `${h} ×${x.n}`).join(", ")}`).join("; ");
-    const odd = split.flatMap(([, hs]) => [...hs.values()].sort((a, b) => a.n - b.n).slice(0, 1).map((x) => x.at));
-    push({ id: `matrix|${name}`, check: "matrix", key: `${name}: ${keys.length} variant${keys.length > 1 ? "s" : ""} used, ${heights.size} heights drawn${say ? `; ${say}` : ""}`, n: 1, at: odd.slice(0, 2), part: name, values: keys.flatMap(([k, hs]) => [...hs.keys()].map((h) => `${k} ${h}`)) }, matrixW.level);
-  }
-  // how much of the screen's controls the design system's parts drew
-  const adoptW = want("adoption"), drawn = controls.filter((c) => { const p = part(c.el); return rules.parts?.length ? p?.listed || !!inPart(c.el, p) : !!p; }).length;
-  if (adoptW.level && controls.length && (rules.parts?.length || drawn)) {
-    const pct = `${Math.round((drawn / controls.length) * 100)}%`;
-    push({ id: "adoption", check: "adoption", key: `DS adoption: ${pct} of controls drawn by DS parts (${drawn} of ${controls.length})`, n: 0, at: [], value: pct }, adoptW.level);
   }
   const give = shares(made.map((g) => g.rows.length), cap);
   made.forEach((g, i) => { if (g.rows.length > give[i]) { g.more = g.rows.length - give[i]; g.rows = g.rows.slice(0, give[i]); } });
