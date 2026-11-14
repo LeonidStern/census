@@ -1,0 +1,55 @@
+# Publishing from here rather than from a laptop, for two reasons: npm can only attest where a build came from when
+# it runs on a CI provider it recognises, and trusted publishing means no token and no one-time code in the way.
+#
+# It needs npm's trusted publishing to be set up once, on npmjs.com, for @leonidstern/census:
+#   Settings -> Trusted publishers -> GitHub Actions, repository LeonidStern/census, workflow release.yml
+# Until then this workflow will fail at the last step, and only there.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # the same build main gets: node 22 and 24, and the page test with a real browser, nothing allowed to skip
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # the OIDC token is what proves to npm that this build came from this workflow in this repository
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      # trusted publishing needs a newer npm than Node bundles
+      - run: npm install -g npm@11.8.0
+      - run: npm ci
+
+      - name: the tag and package.json must agree
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag $GITHUB_REF_NAME says $tag, package.json says $pkg"
+            exit 1
+          fi
+
+      - name: what would be published
+        run: npm pack --dry-run
+
+      # publishConfig carries access and provenance, so there is nothing to pass here
+      - run: npm publish
