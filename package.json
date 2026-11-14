@@ -1,6 +1,6 @@
 {
   "name": "@leonidstern/census",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Eyes for a blind agent: a live web page's styles as text an AI can check, by your design system's own words.",
   "keywords": [
     "design-system",

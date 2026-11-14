@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { forceStates, mapPlaces, pageMapper } from "./read.mjs";
+import { forceStates, inspectorStyle, mapPlaces, pageMapper } from "./read.mjs";
 import { censusLines, mergeCensus } from "../dist/census.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,18 +27,24 @@ let script;
  */
 export async function census(page, { rules = {}, states = "force", sources = false, root, hide, selector } = {}) {
   script ??= readFileSync(join(here, "../dist/census.js"), "utf8");
-  // an evaluate runs in the page's own world, past its Content-Security-Policy, and changes nothing but window.census
+  // an evaluate runs in the page's own world, past its Content-Security-Policy's script-src, and changes nothing but
+  // window.census. A <style> it adds is still checked against style-src, so styles go in through DevTools (below).
   if (!(await page.evaluate(() => !!window.census))) await page.evaluate(script);
-  if (hide) await page.evaluate((h) => { const s = document.createElement("style"); s.id = "census-hide"; s.textContent = `${h}{display:none!important}`; document.head.append(s); }, hide);
-  const cdp = states === "force" ? await page.context().newCDPSession(page).catch(() => null) : null;
+  const cdp = states === "force" || hide ? await page.context().newCDPSession(page).catch(() => null) : null;
+  if (cdp) { await cdp.send("DOM.enable"); await cdp.send("CSS.enable"); }
+  const send = (m, p) => cdp.send(m, p);
+  let unhide = null;
+  if (hide && cdp) unhide = await inspectorStyle(send, `${hide}{display:none!important}`);
+  // Firefox and WebKit have no DevTools session: a <style> element, which a strict style-src will refuse
+  else if (hide) await page.evaluate((h) => { const s = document.createElement("style"); s.id = "census-hide"; s.textContent = `${h}{display:none!important}`; document.head.append(s); }, hide);
   try {
-    if (cdp) {
-      await cdp.send("DOM.enable"); await cdp.send("CSS.enable");
-      let root;
+    if (cdp && states === "force") {
+      let doc;
       await forceStates({
         evaluate: (fn, arg) => page.evaluate(fn, arg),
-        async nodes(sel) { root ??= (await cdp.send("DOM.getDocument", { depth: 0 })).root.nodeId; return (await cdp.send("DOM.querySelectorAll", { nodeId: root, selector: sel })).nodeIds; },
+        async nodes(sel) { doc ??= (await cdp.send("DOM.getDocument", { depth: 0 })).root.nodeId; return (await cdp.send("DOM.querySelectorAll", { nodeId: doc, selector: sel })).nodeIds; },
         force: (ids, classes) => Promise.all(ids.map((nodeId) => cdp.send("CSS.forcePseudoState", { nodeId, forcedPseudoClasses: classes }))),
+        style: (css) => inspectorStyle(send, css),
       });
     }
     const data = await page.evaluate(([r, sel]) => window.census.data(r, sel), [{ ...rules, sources, items: true }, selector]);
@@ -46,7 +52,8 @@ export async function census(page, { rules = {}, states = "force", sources = fal
     const origin = new URL(page.url()).origin;
     return mapPlaces(data, pageMapper(page, new Set(/^https?:/.test(origin) ? [origin] : []), root ?? process.cwd()));
   } finally {
-    if (hide) await page.evaluate(() => document.getElementById("census-hide")?.remove()).catch(() => {});
+    if (unhide) await unhide();
+    else if (hide) await page.evaluate(() => document.getElementById("census-hide")?.remove()).catch(() => {});
     await cdp?.detach().catch(() => {});
   }
 }

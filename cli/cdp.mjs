@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inspectorStyle } from "./read.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -142,6 +143,9 @@ class Page {
   }
   async goto(url, timeout = 120000) {
     this.root = null;
+    // a request the last page left open can't be loading anything for this one (a report or a beacon it fired on the
+    // way out never says it finished), so it mustn't hold this page's settle
+    this.open.clear();
     let off;
     const loaded = new Promise((ok) => { off = this.conn.on((m) => m.sessionId === this.session && m.method === "Page.loadEventFired" && ok()); });
     const r = await this.send("Page.navigate", { url });
@@ -160,7 +164,13 @@ class Page {
     for (const end = Date.now() + timeout; Date.now() < end; await sleep(200)) if (await this.evaluate((s) => !!document.querySelector(s), sel).catch(() => false)) return true;
     return false;
   }
-  addStyle(css) { return this.evaluate((c) => { const s = document.createElement("style"); s.textContent = c; document.head.append(s); }, css); }
+  /**
+   * Styles for the page the way DevTools adds them, as an inspector stylesheet: a page's Content-Security-Policy
+   * doesn't apply to them, so a strict `style-src` neither blocks them nor reports them to the site. A `<style>`
+   * element added from a script is checked against it like any other. Returns a function that takes them off again.
+   */
+  style(css) { return inspectorStyle((m, p) => this.send(m, p), css); }
+  addStyle(css) { return this.style(css); }
   url() { return this.evaluate(() => location.href); }
   mouse(type, x, y) { return this.send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", clickCount: type === "mouseMoved" ? 0 : 1 }); }
   move(x, y) { return this.mouse("mouseMoved", x, y); }
