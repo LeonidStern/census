@@ -8,7 +8,7 @@ Covered by that promise: the census and diff text, rules.json, the CLI's flags a
 
 ## 0.4.0 — 2026-11-14
 
-0.3.0 only ever existed in one commit: it was never tagged or published, so this is the upgrade from 0.2.1.
+Neither 0.2.1 nor 0.3.0 reached npm: 0.2.1's release run failed at the publish step, and 0.3.0 only ever existed in one commit. So this is the upgrade from 0.2.0, and it carries 0.2.1's fix as well.
 
 **Breaking: two kinds of line read differently**, which by the promise above makes this a minor version, not a patch: the max lines, and a part a pixel apart in height, which used to be `IN 2 LOOKS`. The ids (`max|fill`) are the same, but `n` for type now counts sizes, so a `--fail-on max-worse` diff across this upgrade compares two different units: capture main again after upgrading.
 
@@ -19,6 +19,8 @@ Covered by that promise: the census and diff text, rules.json, the CLI's flags a
 - **A request the last page left open no longer holds up the next one.** A report fired as one page unloads never says it finished, and the reload waited up to 5 s for it to age out. Navigating now starts the list of open requests afresh.
 
 ## 0.2.1 — 2026-11-14
+
+Tagged, never published: its fix ships in 0.4.0.
 
 - `require("@leonidstern/census/package.json")` works. `exports` didn't list it, so Node refused the subpath with `ERR_PACKAGE_PATH_NOT_EXPORTED` — which breaks the tools that read a package's version that way. Found by installing 0.2.0 from the registry rather than by reading the file.
 
