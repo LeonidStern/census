@@ -1,9 +1,33 @@
 {
-  "name": "census",
+  "name": "@leonidstern/census",
   "version": "0.1.0",
   "description": "Eyes for a blind agent: a live web page's styles as text an AI can check, by your design system's own words.",
+  "keywords": [
+    "design-system",
+    "visual-regression",
+    "accessibility",
+    "wcag",
+    "css",
+    "agent",
+    "llm",
+    "playwright",
+    "ci"
+  ],
+  "homepage": "https://github.com/LeonidStern/census#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeonidStern/census.git"
+  },
+  "bugs": {
+    "url": "https://github.com/LeonidStern/census/issues"
+  },
+  "author": "Leonid Stern",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "bin": {
     "census": "cli/census.mjs"
   },

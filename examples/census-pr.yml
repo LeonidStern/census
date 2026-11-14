@@ -19,7 +19,7 @@ jobs:
         with: { ref: "${{ github.event.pull_request.base.sha || github.sha }}" }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm install --no-save github:LeonidStern/census
+      - run: npm install --no-save @leonidstern/census
 
       # main's capture, made once per commit: two loads per page, so diff can leave live data out
       - id: base
