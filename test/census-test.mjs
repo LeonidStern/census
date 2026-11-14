@@ -98,6 +98,13 @@ check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor
   check(C.diffFindings(cen(7), cen(4)).lines.join("\n") === "max better (1)\n  radius 7 values, 4 the max — now under", "a group back under its max is said once and drops out");
 }
 
+{
+  // where a value comes from is left out of a diff's value lines, its own parentheses too
+  const c = (key, note) => ({ head, groups: [{ name: "text", rows: [{ key, n: 1, note, at: ["p 16,30 100x20"] }] }] });
+  const d = C.diffCensus(c("muted", undefined), c("#555555", " OFF (nearest muted, 59 away) (from .low, via var(--muted))")).join("\n");
+  check(d.includes("  text #555555 OFF (nearest muted, 59 away) ×1: p 16,30 100x20"), "a diff's value line drops where it comes from, even a var() in it") || console.log(d);
+}
+
 // ---------- Source maps ----------
 {
   const { transform } = await import("esbuild"), { sourceMapper, mapSources } = await import("../cli/sourcemap.mjs");
