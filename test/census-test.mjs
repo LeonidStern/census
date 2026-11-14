@@ -249,6 +249,36 @@ if (chromium) {
       && /grid 2 cols gap 0\/16 ×1: #rows/.test(lay) && /box pad 16 ×1: #card [^\n]* holding 1: h2 "Card"/.test(lay) && /text end ×1: span [^\n]*in #rows/.test(al) && /\n {2}every other text at the start of its box$/.test(al) && !/text center/.test(al);
     check(ok, `layout: gaps as drawn (and from margins), padding, alignment, grids and filled boxes; text set to the end, not a button's centred label${ok ? "" : `\n${lay}\n${al}`}`);
   }
+  {
+    // the rules file's own rules: roles, text colors, states, pairs, legacy parts and a contrast floor
+    const colors = { "surface-0": "#000", "surface-1": "#131313", "surface-2": "#1d1d1d", "surface-3": "#282828", "white-100": "#fff", "white-30": "#ffffff4d", "white-5": "#ffffff0d", "red-700": "#3d1a1a", "red-300": "#f0a0a0", grey: "#666" };
+    const page = async (page) => page.evaluate(() => {
+      document.head.insertAdjacentHTML("beforeend", "<style>.wash:hover{background:#282828}.step:hover{background:#333}.gold{background:#e0b000}.gold:hover{background:#f0c010}</style>");
+      document.body.innerHTML = '<main><button class="btn wash">Wash</button><button class="btn step">Step</button><button class="btn gold">Gold</button><p style="color:rgba(255,255,255,.3)">Quiet words</p>'
+        + '<div style="background:#3d1a1a;padding:8px"><span style="color:#fff">Error</span></div><p style="color:#666">Grey words</p>'
+        + '<legacy-tabs><button class="btn">Old tab</button></legacy-tabs></main>'
+        + '<div role="dialog" style="position:fixed;left:300px;top:40px;width:200px;height:120px;background:#131313;border-radius:8px">Dialog</div>';
+      class LegacyTabsComponent {}
+      const made = new Map([...document.querySelectorAll("legacy-tabs")].map((h) => [h, new LegacyTabsComponent()]));
+      window.ng = { getComponent: (el) => made.get(el) ?? null };
+    });
+    const rules = { colors, shadows: { popover: "0 8px 24px 0 rgba(0,0,0,0.5)" }, roles: { dialog: { fill: "surface-2", shadow: "popover", radius: 12 } },
+      text: ["white-100", "red-300", "grey"], states: { hover: "wash white-5" }, pairs: { "red-700": ["red-300"] }, legacy: ["LegacyTabs"], contrast: 4.5 };
+    const t = await read(page, rules), broken = t.split(/\n(?=\S)/).find((x) => x.startsWith("rules broken")) ?? "";
+    const want = (re, what) => check(re.test(broken), `${what}${re.test(broken) ? "" : `\n${broken || t}`}`);
+    want(/dialog fill surface-1: its role takes surface-2/, "rules: a dialog's fill against its role");
+    want(/dialog shadow none: its role takes popover/, "rules: a dialog's shadow against its role");
+    want(/dialog corner 8px: its role takes 12px/, "rules: a dialog's corner against its role");
+    want(/text white-30 is not a text color/, "rules: text in a color text may not use");
+    want(/text white-100 on red-700: that fill takes text red-300/, "rules: text on a fill that pairs with another text color");
+    want(/hover fill #333333[^\n]* is not a white-5 wash over surface-2/, "rules: a hover that steps to another grey is not the wash");
+    check(!/#282828[^\n]*is not/.test(broken), "rules: a hover that is the wash passes");
+    check(!/Gold/.test(broken), "rules: a colored fill keeps its own hover (a wash is for neutral fills)");
+    want(/legacy part LegacyTabs on screen/, "rules: a legacy part still on screen");
+    check(/faint p .*contrast 3\.7:1/.test(t), `rules: the contrast floor comes from the rules file${/contrast 3\.7:1/.test(t) ? "" : `\n${t}`}`);
+    const plain = await read(page, { colors });
+    check(!/rules broken/.test(plain) && !/contrast 3\.7:1/.test(plain), "no rules of its own, no rules broken (and the default contrast floor)");
+  }
   await b.close();
 }
 
