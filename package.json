@@ -13,13 +13,13 @@
     "playwright",
     "ci"
   ],
-  "homepage": "https://github.com/LeonidStern/census#readme",
+  "homepage": "https://github.com/leonidstern/census#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LeonidStern/census.git"
+    "url": "git+https://github.com/leonidstern/census.git"
   },
   "bugs": {
-    "url": "https://github.com/LeonidStern/census/issues"
+    "url": "https://github.com/leonidstern/census/issues"
   },
   "author": "Leonid Stern",
   "license": "MIT",
