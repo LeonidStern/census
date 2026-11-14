@@ -131,11 +131,12 @@ export function diffCensus(before: Census, after: Census, max = 40, live?: Censu
   if (moveLines.length) out.push(`moved (${moved}, in ${moveLines.length} groups)`, ...cap(moveLines, Math.min(max, 12)));
 
   // values: a value on screen now that wasn't (an OFF one first), and one no longer on screen
+  // where a value comes from is left out of the line; it can hold parentheses of its own: (from .x, via var(--y))
   const rows = (c: Census) => {
     const m = new Map<string, string>();
     for (const g of c.groups) {
       if (g.name === "parts" || g.name === "layout problems" || g.name === "left out") continue;
-      for (const r of g.rows) m.set(`${g.name} ${r.key}`, `${g.name} ${r.key}${r.note ? r.note.replace(/ \((from|via) [^)]*\)/g, "") : ""} ×${r.n}${r.at[0] ? `: ${r.at[0]}` : ""}`);
+      for (const r of g.rows) m.set(`${g.name} ${r.key}`, `${g.name} ${r.key}${r.note ? r.note.replace(/ \((?:from|via) (?:[^()]|\([^()]*\))*\)/g, "") : ""} ×${r.n}${r.at[0] ? `: ${r.at[0]}` : ""}`);
     }
     return m;
   };
