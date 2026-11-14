@@ -163,6 +163,6 @@ export function diffCensus(before: Census, after: Census, max = 40, live?: Censu
   if (np.length) out.push(`layout problems new (${np.length})`, ...cap(np, max));
   if (fp.length) out.push(`layout problems gone (${fp.length})`, ...cap(fp, max));
   // findings by id: rule breaks and accessibility new and fixed, observations only new
-  out.push(...diffFindings(before, after, max).lines);
+  if (before.report || after.report) out.push(...diffFindings(before, after, max).lines);
   return out;
 }

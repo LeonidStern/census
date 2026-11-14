@@ -44,7 +44,7 @@ check(Math.round(C.contrast(white, black)) === 21 && JSON.stringify(C.parseColor
     && JSON.stringify(s({ checks: { "small-text": 9 } }, "small-text")) === '{"level":"observation","n":9}' && s({ extends: "recommended@2" }, "near").level === null,
   "checks: the team's rules always on, the preset's only when asked, a level and a number from rules.checks");
   const F = (id, level, key, more = {}) => ({ id, check: id.split("|")[0], level, key, n: 1, at: [`div 0,0 ${id.length}x1`], ...more });
-  const page = (findings) => ({ head, groups: [], findings: findings.map((f) => ({ ...f, at: [...f.at] })) });
+  const page = (findings) => ({ head, groups: [], report: true, findings: findings.map((f) => ({ ...f, at: [...f.at] })) });
   const fs = [F("off|fill|#123456", "rule", "fill #123456 OFF"), F("off|text|#222222", "rule", "text #222222 OFF"), F("legacy|Body", "rule", "legacy part Body on screen", { n: 3, part: "Body" }),
     F("contrast|#777777 on #ffffff|", "accessibility", "contrast 4.48:1 muted on paper below 4.5", { value: "muted on paper" }), F("contrast|#999999 on #ffffff|", "accessibility", "contrast 2.85:1 gray on paper below 4.5", { unsure: true }),
     F("once|type", "observation", "type seen on one element only: 9/400/12", { values: ["9/400/12"] }), F("small-text|9", "observation", "text 9px under 10px", { value: "9" })];
@@ -148,8 +148,9 @@ if (chromium) {
     `observations: small and light text, one part's hover two ways, a part at more heights than variants, adoption${show}`);
     check(fs.find((x) => x.id === "legacy|Body")?.level === "rule" && f(/^text muted not a text color/).length === 1 && f(/^fill paper with text muted \(system\.pairs: ink\)$/).length === 1 && !f(/^fill paper with text #cccccc/).length,
       `system rules: a legacy part, a text color, a pair (a turned-off control exempt), each a rule broken${show}`);
-    const plainData = await pwCensus(p4, { rules: sys });
-    check(!plainData.findings.some((x) => x.level !== "rule") && /accessibility checks and observations are off/.test(pwLines(plainData)), "without extends: only the team's rules, and one line saying the checks exist");
+    const plainData = await pwCensus(p4, { rules: { colors: sys.colors } });
+    check(!plainData.findings.some((x) => x.level !== "rule") && plainData.findings.some((x) => x.check === "off") && !/^(rules broken|accessibility|observations) \(/m.test(pwLines(plainData)) && !plainData.report,
+      "without extends, checks, system or accept: the findings are data only (for diff and --fail-on); the text is as it always was");
     const team = await pwCensus(p4, { rules: { ...sys, checks: { contrast: ["rule", 3.8], once: "off" } } });
     const tc = team.findings.filter((x) => x.check === "contrast");
     check(tc.length === 2 && tc.every((x) => x.level === "rule") && /below 3\.8 \(team floor; WCAG 1\.4\.3 asks 4\.5\)/.test(tc[0].key) && !team.findings.some((x) => x.check === "once"),

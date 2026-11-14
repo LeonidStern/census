@@ -143,7 +143,7 @@ The checks, your own rules about what the screen shows, and the findings you kee
 }
 ```
 
-- `extends`: `recommended@1` turns on the accessibility checks and observations. The version is pinned, so new defaults never change your output on their own.
+- `extends`: `recommended@1` turns on the accessibility checks and observations. The version is pinned, so new defaults never change your output on their own. Without `extends`, `checks`, `system` or `accept`, the text is exactly as before: the findings are only in census.json, for `diff --fail-on` and `capture --fail-on`.
 - `checks`: a check's level (`"off"`, `"advice"`, `"rule"`) and its number (a number, or `[level, number]`). Checks: `contrast` (the floor, 4.5 by default), `focus`, `target` (24), `near`, `once`, `hover`, `quiet`, `small-text` (10 or 11), `light-text`, `matrix`, `adoption`, and your own rules' `off`, `no-part`, `legacy`, `text-color`, `pair`.
 - `system`: `textColors` (the tokens text may use), `legacyParts` (parts that should no longer render), `pairs` (a fill token and a text token it may carry).
 - `accept`: matched on `rule` and `value`, `part` or `page`; `why` is required. `max` brings it back when it grows past that count, `until` after that date.

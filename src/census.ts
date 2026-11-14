@@ -306,7 +306,7 @@ export type CensusRow = { key: string; n: number; note?: string; at: string[]; l
 export type CensusGroup = { name: string; what?: string; rows: CensusRow[]; more?: number };
 /** One element's look, for a diff between two captures (rules.items): `id` names it with its words, `loose` without them. */
 export type CensusItem = { id: string; loose: string; at: string; box: [number, number, number, number]; look: Record<string, string> };
-export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[]; /** a second read a moment later, by the capture */ again?: { items?: CensusItem[] }; findings?: Finding[]; /** set when no preset or check was asked for: a line saying observations exist */ hint?: string; tokens?: DeclaredToken[] };
+export type Census = { head: string; groups: CensusGroup[]; items?: CensusItem[]; /** a second read a moment later, by the capture */ again?: { items?: CensusItem[] }; findings?: Finding[]; /** the findings are printed: rules.json asked for checks (extends, checks, system or accept); without, the text is as it always was */ report?: boolean; tokens?: DeclaredToken[] };
 
 type RGBA = [number, number, number, number];
 const hex = (c: RGBA) => `#${c.slice(0, 3).map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}${c[3] < 0.995 ? Math.round(c[3] * 255).toString(16).padStart(2, "0") : ""}`;
@@ -683,8 +683,7 @@ export function censusLines(c: Census): string[] {
     for (const r of g.rows) out.push(`  ${rowText(r)}`);
     if (g.more) out.push(`  ... ${g.more} more`);
   }
-  out.push(...findingLines(c));
-  if (c.hint) out.push(c.hint);
+  if (c.report) out.push(...findingLines(c));
   return out;
 }
 /** How many looks a part shows: the most skins inside one state, or the shapes (height and corner) across all states: a state changes colors, not size. */
@@ -739,8 +738,8 @@ export function mergeCensus(pages: Record<string, Census>): Census {
     for (let i = 0; i < 3; i++) for (const p of a.pages) { const x = a.at.get(p)?.[i]; if (x && a.row.at.length < 3 && !said.has(x)) { said.add(x); a.row.at.push(`[${p}] ${x}`); } }
   }
   for (const g of groups) if (g.name !== "layout problems") g.rows.sort((a, b) => looksOf(b) - looksOf(a) || b.n - a.n);
-  const findings = mergeFindings(pages), hint = names.map((p) => pages[p].hint).find(Boolean);
-  return { head: `${pages[names[0]]?.head ?? "styles on screen"}; pages: ${names.join(", ")}`, groups: groups.map((g) => ({ ...g, more: g.more || undefined })), ...(findings ? { findings } : {}), ...(hint ? { hint } : {}) };
+  const findings = mergeFindings(pages), report = names.some((p) => pages[p].report);
+  return { head: `${pages[names[0]]?.head ?? "styles on screen"}; pages: ${names.join(", ")}`, groups: groups.map((g) => ({ ...g, more: g.more || undefined })), ...(findings ? { findings } : {}), ...(report ? { report } : {}) };
 }
 /** How many rows each group may show when they don't all fit: small groups whole, the rest an even share. */
 const shares = (sizes: number[], budget: number): number[] => {
@@ -1688,8 +1687,9 @@ function census(rules: StyleRules, root: Element, cap: number, host: HTMLElement
       items.push({ id: `${nameOf(name)}${p ? ` [${p.say}]` : ""}${where(it.el)}`, loose: `${tag}${p ? ` [${p.key}]` : ""}${where(it.el)}`, at: place(it.el, it.r, name), box: [it.r.left, it.r.top, it.r.width, it.r.height].map(Math.round) as CensusItem["box"], look });
     }
   }
-  const hint = asksChecks(rules) ? undefined : 'accessibility checks and observations are off: add "extends": "recommended@1" to rules.json, or --extends recommended@1';
-  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items, findings, ...(hint ? { hint } : {}), ...(rules.items ? { tokens: declaredTokens() } : {}) };
+  // the findings are always in the data (diff and --fail-on read them); the text says them only when rules.json asks
+  const report = asksChecks(rules) || !!rules.system || !!rules.accept?.length;
+  return { head: `styles on screen, window ${innerWidth}x${innerHeight}${rules.colors || rules.type || rules.radii ? ", checked against the design system's values" : ""}`, groups: made, items, findings, ...(report ? { report } : {}), ...(rules.items ? { tokens: declaredTokens() } : {}) };
 }
 
 /**
