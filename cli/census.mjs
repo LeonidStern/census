@@ -34,12 +34,20 @@ const USAGE = `census capture [options] <url | name=url>...
                       that matter (set where used, values off the system, a part in two looks). Needs a dev
                       build; React 19's places are mapped through the page's source maps
   --root <dir>        the project folder, to write source paths relative to it (default: the current one)
+  --extends <preset>  turn on the accessibility checks (recommended@1); rules.json can say it too
+  --fail-on <levels>  exit 1 on findings at these levels: rules (a value off rules.json), accessibility
+                      (comma-separated; unsure ones never fail). Without it a capture exits 0 whatever it finds
 
 census diff [--live <before2/census.json>] <before/census.json> <after/census.json>
   What changed between two captures of the same pages, page by page: elements whose look changed (before→after),
   elements that came or went, new and lost values, parts with a new look, layout problems new and gone.
   Places that only moved are counted, not listed. --live: a second capture taken before the change; elements
   that differ between the two before captures change on their own (prices, charts) and are left out.
+  Then accessibility findings new and fixed.
+  --fail-on new-rules,new-accessibility: exit 1 when the after capture has values off rules.json, or accessibility
+  findings, that the before capture didn't (what CI wants: a PR is judged only on what it added)
+
+Exit codes: 0 done, 1 findings at a --fail-on level, 2 usage or a capture that failed.
 `;
 
 const args = process.argv.slice(2);
@@ -53,7 +61,10 @@ for (let i = 0; i < args.length; i++) {
 }
 
 async function capture() {
+  const C = await import(join(here, "../dist/census.mjs"));
   const rules = opt.rules ? JSON.parse(readFileSync(opt.rules, "utf8")) : {};
+  if (opt.extends) rules.extends = opt.extends;
+  if (rules.extends && !C.PRESETS.includes(rules.extends)) throw new Usage(`unknown preset ${rules.extends} (known: ${C.PRESETS.join(", ")})`);
   if (opt.closed) rules.closed = true;
   if (opt.sources) rules.sources = true;
   rules.items = true; // census.json keeps each element's look, for census diff
@@ -95,18 +106,30 @@ async function capture() {
       }
       if (opt.tour) await tour(page, rules, data, width, height, url);
       pages[name] = data;
-      writeFileSync(join(out, `${name}.txt`), await say(await page.evaluate((d) => window.census.lines(d), data)));
+      writeFileSync(join(out, `${name}.txt`), await say(C.censusLines(data)));
       const live = data.again ? (await import("../dist/census.mjs")).changesOnItsOwn(data.items, data.again.items).filter((x) => data.items.includes(x)).length : 0;
       console.log(`${name} ${url}: ${settled === null ? `didn't settle in ${opt.wait ?? 15000} ms (requests still loading or the page still moving)` : `loaded and settled in ${t - t0} ms`}; read in ${ms} ms (${n} controls hovered, pressed and focused)${data.again ? `; ${live} elements change on their own` : ""}`);
     }
-    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(await page.evaluate((p) => window.census.lines(window.census.merge(p)), pages)));
+    if (rest.length > 1) writeFileSync(join(out, "all.txt"), await say(C.censusLines(C.mergeCensus(pages))));
     // census.json gets the same file:line places as the text, for census diff
     writeFileSync(join(out, "census.json"), JSON.stringify(opt.sources ? await mapPlaces(pages, map) : pages));
   } finally {
     await page.close();
     await browser.close();
   }
+  if (opt["fail-on"]) {
+    const levels = failLevels(opt["fail-on"], ["rules", "accessibility"]);
+    const bad = Object.values(pages).flatMap((d) => d.findings ?? []).filter((f) => (f.level === "rule" && levels.has("rules")) || (f.level === "accessibility" && !f.unsure && levels.has("accessibility")));
+    if (bad.length) { console.log(`${bad.length} findings at --fail-on ${opt["fail-on"]}`); process.exitCode = 1; }
+  }
 }
+
+class Usage extends Error {}
+const failLevels = (v, known) => {
+  const s = new Set(String(v).split(",").map((x) => x.trim()).filter(Boolean));
+  for (const x of s) if (!known.includes(x)) throw new Usage(`--fail-on ${x}: expected ${known.join(", ")}`);
+  return s;
+};
 
 const LAYER = "[role=dialog],[role=alertdialog],[role=menu],[role=listbox],[role=tooltip]";
 // of a pop-up's own census: its layer, parts, states and use-site changes, and any value off the system
@@ -171,7 +194,9 @@ async function tour(page, rules, data, width, height, url) {
 }
 
 async function diff() {
-  const { diffCensus } = await import(join(here, "../dist/census.mjs"));
+  const { diffCensus, diffFindings } = await import(join(here, "../dist/census.mjs"));
+  const levels = opt["fail-on"] ? failLevels(opt["fail-on"], ["new-rules", "new-accessibility"]) : new Set();
+  let failing = 0;
   const [a, b] = rest.map((f) => JSON.parse(readFileSync(f, "utf8")));
   const live = opt.live ? JSON.parse(readFileSync(opt.live, "utf8")) : null;
   const names = [...new Set([...Object.keys(a), ...Object.keys(b)])];
@@ -179,11 +204,20 @@ async function diff() {
   for (const n of names) {
     if (!a[n] || !b[n]) { out.push(`${n}: only in the ${a[n] ? "before" : "after"} capture`, ""); continue; }
     out.push(`<${n}>`, ...diffCensus(a[n], b[n], 40, live?.[n]), `</${n}>`, "");
+    const d = diffFindings(a[n], b[n]);
+    if (levels.has("new-rules")) failing += d.newRules.length;
+    if (levels.has("new-accessibility")) failing += d.newAccessibility.filter((f) => !f.unsure).length;
   }
   console.log(out.join("\n").trim());
+  if (failing) { console.log(`${failing} new findings at --fail-on ${opt["fail-on"]}`); process.exitCode = 1; }
 }
 
 // run last: the functions above use constants defined after them
-if (cmd === "capture" && rest.length) await capture();
-else if (cmd === "diff" && rest.length === 2) await diff();
-else { console.log(USAGE); process.exit(cmd ? 1 : 0); }
+try {
+  if (cmd === "capture" && rest.length) await capture();
+  else if (cmd === "diff" && rest.length === 2) await diff();
+  else { console.log(USAGE); process.exit(cmd ? 2 : 0); }
+} catch (e) {
+  console.error(e instanceof Usage ? `census: ${e.message}` : e);
+  process.exit(2);
+}

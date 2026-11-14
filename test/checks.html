@@ -1,0 +1,30 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>census checks</title>
+<style>
+  :root { --ink: #111111; --muted: #777777; --paper: #ffffff; --gray-300: #999999; --bg-raised: var(--paper); --radius-md: 8px; --shadow-pop: 0 4px 12px rgba(0,0,0,.2); --unused-red: #ff0000; }
+  body { margin: 0; padding: 16px; background: var(--paper); color: var(--ink); font: 14px/20px Inter, system-ui, sans-serif; }
+  .low { color: var(--muted); }
+  .big { font-size: 24px; line-height: 30px; color: #949494; margin: 0; }
+  .off { color: #cccccc; background: none; border: 1px solid #ccc; }
+  .grad { background: linear-gradient(90deg, #fff, #eee); color: var(--gray-300); padding: 4px; }
+  input { border: 1px solid var(--ink); height: 28px; border-radius: var(--radius-md); }
+  input::placeholder { color: #bbbbbb; }
+  .icons { display: flex; gap: 2px; }
+  .icon { width: 16px; height: 16px; padding: 0; border: 0; background: #e0e0e0; }
+  .alone { position: absolute; left: 600px; top: 300px; width: 16px; height: 16px; padding: 0; border: 0; background: #e0e0e0; }
+  .nofocus { background: none; border: 1px solid var(--ink); height: 32px; }
+  .nofocus:focus, .nofocus:focus-visible { outline: none; }
+  .pop { box-shadow: var(--shadow-pop); border-radius: var(--radius-md); }
+</style></head>
+<body>
+  <p class="low">Muted words on paper</p>
+  <h1 class="big">Large heading</h1>
+  <button class="off" disabled>Turned off</button>
+  <div class="grad">Over a gradient</div>
+  <input placeholder="Search orders">
+  <div class="icons"><button class="icon" aria-label="Bold"></button><button class="icon" aria-label="Italic"></button></div>
+  <button class="alone" aria-label="Close"></button>
+  <p>Read the <a href="#terms">terms</a> before you start.</p>
+  <button class="nofocus">No ring</button>
+  <div class="pop">A raised box</div>
+</body></html>
