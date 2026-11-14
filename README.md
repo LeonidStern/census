@@ -1,5 +1,10 @@
 # Census
 
+[![CI](https://github.com/LeonidStern/census/actions/workflows/ci.yml/badge.svg)](https://github.com/LeonidStern/census/actions/workflows/ci.yml)
+[![runtime dependencies: 0](https://img.shields.io/badge/runtime%20dependencies-0-16dc55)](package.json)
+[![node: 22+](https://img.shields.io/badge/node-22%2B-548eff)](package.json)
+[![licence: MIT](https://img.shields.io/badge/licence-MIT-808080)](LICENSE)
+
 **Eyes for a blind agent.**
 
 An AI agent can't see a web page. Census reads the page in the browser and writes what's on screen as text: every color, size, corner and state, named by your design system, with the component that drew it and the file and line that placed it. The agent then checks the page as it checks code. It takes no screenshots.
