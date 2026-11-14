@@ -1,6 +1,6 @@
 {
   "name": "@leonidstern/census",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Eyes for a blind agent: a live web page's styles as text an AI can check, by your design system's own words.",
   "keywords": [
     "design-system",
@@ -60,6 +60,7 @@
       "default": "./dist/census.mjs"
     },
     "./playwright": "./cli/playwright.mjs",
-    "./census.js": "./dist/census.js"
+    "./census.js": "./dist/census.js",
+    "./package.json": "./package.json"
   }
 }

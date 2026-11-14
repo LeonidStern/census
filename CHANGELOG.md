@@ -6,6 +6,10 @@ Covered by that promise: the census and diff text, rules.json, the CLI's flags a
 
 ## Unreleased
 
+## 0.2.1 — 2026-11-14
+
+- `require("@leonidstern/census/package.json")` works. `exports` didn't list it, so Node refused the subpath with `ERR_PACKAGE_PATH_NOT_EXPORTED` — which breaks the tools that read a package's version that way. Found by installing 0.2.0 from the registry rather than by reading the file.
+
 ## 0.2.0 — 2026-11-14
 
 The first version on npm, as `@leonidstern/census` — the name `census` belongs to someone else's package. Everything below was written before any release, so there is nothing to upgrade from.
