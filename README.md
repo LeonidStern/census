@@ -53,8 +53,10 @@ layout problems (2)
 You need Node 22+ and Chrome, Chromium or Edge.
 
 ```bash
-npm install github:LeonidStern/census
+npm install @leonidstern/census
 ```
+
+The command it installs is `census`. Run it without installing anything with `npx @leonidstern/census`.
 
 ## Use
 
